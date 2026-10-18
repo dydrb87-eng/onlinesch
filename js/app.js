@@ -1607,10 +1607,8 @@ class TimetableApp {
       this.saveActiveYearSemesterData();
       const exportData = {
         activeYear: this.activeYear,
-        activeGrade: this.activeGrade,
         activeSemester: this.activeSemester,
         academicYears: this.academicYears,
-        grades: this.grades,
         yearsData: this.yearsData,
         periods: this.periods,
         days: this.days,
@@ -1622,6 +1620,8 @@ class TimetableApp {
         offeredSubjects: this.offeredSubjects,
         subjectColorMap: this.subjectColorMap,
         showWeekends: this.showWeekends,
+        timetableTabs: this.timetableTabs,
+        activeTimetableTabId: this.activeTimetableTabId,
         lastUpdated: new Date().toISOString()
       };
 
@@ -1629,15 +1629,24 @@ class TimetableApp {
       const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      const dateStr = `${yyyy}${mm}${dd}`;
+      const timeStr = `${hh}${min}`;
+
       a.href = url;
-      a.download = `timetable-db_${this.activeYear}학년도_${this.activeGrade}학년_${this.activeSemester}학기_${nowStr}.json`;
+      a.download = `${this.activeYear}학년도 강원온라인학교 시간표_${dateStr}_${timeStr}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      this.showToast(`시간표 전체 데이터가 JSON 파일로 저장(다운로드)되었습니다.`);
+      this.showToast(`[${a.download}] 파일이 성공적으로 저장(다운로드)되었습니다.`);
     } catch (e) {
       console.error('Failed to export JSON file:', e);
       alert('JSON 파일 내보내기 중 오류가 발생했습니다: ' + e.message);

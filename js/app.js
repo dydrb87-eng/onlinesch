@@ -62,6 +62,22 @@ class TimetableApp {
 
   async init() {
     this.loadState();
+
+    // 로컬 데이터가 비어있거나 학생이 0명이면 즉시 data/timetable-db.json에서 직접 로드
+    if (!this.masterStudents || this.masterStudents.length === 0) {
+      try {
+        const res = await fetch('data/timetable-db.json?t=' + Date.now());
+        if (res.ok) {
+          const dbData = await res.json();
+          if (dbData) {
+            this.applyExternalData(dbData);
+          }
+        }
+      } catch (e) {
+        console.warn('Initial seed load fallback:', e);
+      }
+    }
+
     this.loadExcelStudentPool();
     this.sortPeriods();
     this.sortOfferedSubjects();
@@ -75,15 +91,8 @@ class TimetableApp {
       if (window.cloudSync) {
         const remoteData = await window.cloudSync.loadFromBackend();
         if (remoteData) {
-          const localSaved = localStorage.getItem(this.storageKey);
-          const localData = localSaved ? JSON.parse(localSaved) : null;
           const localCount = (this.masterStudents || []).length;
-
-          // 원격 데이터가 더 최신이거나, 로컬 학생 데이터가 비어있는 경우 즉시 적용
-          const shouldApply = !localData || 
-            localCount === 0 || 
-            !localData.lastUpdated || 
-            (remoteData.lastUpdated && new Date(remoteData.lastUpdated) > new Date(localData.lastUpdated));
+          const shouldApply = localCount === 0;
 
           if (shouldApply) {
             this.applyExternalData(remoteData, '시간표 및 학생 데이터를 불러왔습니다.');
@@ -421,9 +430,10 @@ class TimetableApp {
       if (saved) {
         const data = JSON.parse(saved);
         this.yearsData = data.yearsData || data.years || {};
-        this.academicYears = data.academicYears || Object.keys(this.yearsData);
+        this.academicYears = (data.academicYears && data.academicYears.length > 0) ? data.academicYears : Object.keys(this.yearsData);
         if (!this.academicYears.includes('2027')) this.academicYears.unshift('2027');
         if (!this.academicYears.includes('2026')) this.academicYears.push('2026');
+        this.academicYears = Array.from(new Set(this.academicYears.filter(y => y && !['undefined', 'null'].includes(String(y)))));
 
         // 기본 작업 학년도: 2027학년도, 기본 학기: 1학기
         this.activeYear = data.activeYear || '2027';
@@ -2195,14 +2205,11 @@ class TimetableApp {
         const yearObj = this.yearsData[year] || {};
         
         let totalCount = 0;
-        ['2', '3'].forEach(g => {
-          const gObj = yearObj[g] || {};
-          ['1', '2'].forEach(s => {
-            const semObj = gObj[s] || {};
-            if (semObj.masterStudents && Array.isArray(semObj.masterStudents)) {
-              totalCount += semObj.masterStudents.length;
-            }
-          });
+        ['1', '2'].forEach(s => {
+          const semObj = yearObj[s] || {};
+          if (semObj.masterStudents && Array.isArray(semObj.masterStudents)) {
+            totalCount += semObj.masterStudents.length;
+          }
         });
 
         return `
@@ -2239,9 +2246,8 @@ class TimetableApp {
     }
 
     const currentYearObj = this.yearsData[this.activeYear] || {};
-    const currentGradeObj = currentYearObj[this.activeGrade] || {};
-    const sem1Count = (currentGradeObj['1'] && currentGradeObj['1'].masterStudents) ? currentGradeObj['1'].masterStudents.length : 0;
-    const sem2Count = (currentGradeObj['2'] && currentGradeObj['2'].masterStudents) ? currentGradeObj['2'].masterStudents.length : 0;
+    const sem1Count = (currentYearObj['1'] && currentYearObj['1'].masterStudents) ? currentYearObj['1'].masterStudents.length : 0;
+    const sem2Count = (currentYearObj['2'] && currentYearObj['2'].masterStudents) ? currentYearObj['2'].masterStudents.length : 0;
 
     const btnSem1 = document.getElementById('tab-semester-1');
     const btnSem2 = document.getElementById('tab-semester-2');

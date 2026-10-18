@@ -479,16 +479,17 @@ class TimetableApp {
   }
 
   resetToDefaults(showConfirm = true) {
-    if (showConfirm && !confirm(`현재 [${this.activeYear}학년도 ${this.activeSemester}학기] 데이터를 초기화하시겠습니까?`)) {
+    if (showConfirm && !confirm(`현재 [${this.activeYear}학년도 ${this.activeGrade}학년 ${this.activeSemester}학기] 데이터를 초기화하시겠습니까?`)) {
       return;
     }
-    this.ensureYearSemesterData(this.activeYear, this.activeSemester);
-    this.yearsData[this.activeYear][this.activeSemester] = this.createDefaultSemesterData();
+    this.pushUndoSnapshot(`[${this.activeYear}학년도 ${this.activeGrade}학년 ${this.activeSemester}학기] 초기화 전 상태`);
+    this.ensureYearSemesterData(this.activeYear, this.activeGrade, this.activeSemester);
+    this.yearsData[this.activeYear][this.activeGrade][this.activeSemester] = this.createDefaultSemesterData();
     this.loadActiveYearSemesterData();
     this.buildSubjectColorMap();
     this.saveState();
     this.render();
-    this.showToast('데이터가 초기화되었습니다.');
+    this.showToast('데이터가 초기화되었습니다.', true);
   }
 
   // ==========================================
@@ -1449,8 +1450,10 @@ class TimetableApp {
         description: description,
         timestamp: Date.now(),
         activeYear: this.activeYear,
+        activeGrade: this.activeGrade || '2',
         activeSemester: this.activeSemester,
         academicYears: JSON.parse(JSON.stringify(this.academicYears)),
+        grades: JSON.parse(JSON.stringify(this.grades || ['2', '3'])),
         yearsData: JSON.parse(JSON.stringify(this.yearsData))
       };
       this.undoStack.push(snapshot);
@@ -1477,8 +1480,10 @@ class TimetableApp {
       description: this.undoStack[this.undoStack.length - 1]?.description || '되돌리기 전 상태',
       timestamp: Date.now(),
       activeYear: this.activeYear,
+      activeGrade: this.activeGrade || '2',
       activeSemester: this.activeSemester,
       academicYears: JSON.parse(JSON.stringify(this.academicYears)),
+      grades: JSON.parse(JSON.stringify(this.grades || ['2', '3'])),
       yearsData: JSON.parse(JSON.stringify(this.yearsData))
     };
     if (!this.redoStack) this.redoStack = [];
@@ -1491,8 +1496,10 @@ class TimetableApp {
     if (!snapshot) return;
 
     this.activeYear = snapshot.activeYear;
+    this.activeGrade = snapshot.activeGrade || '2';
     this.activeSemester = snapshot.activeSemester;
     this.academicYears = snapshot.academicYears;
+    this.grades = snapshot.grades || ['2', '3'];
     this.yearsData = snapshot.yearsData;
 
     this.loadActiveYearSemesterData();
@@ -1502,7 +1509,7 @@ class TimetableApp {
     this.render();
     this.updateUndoRedoButtonUI();
 
-    this.showToast(`[실행 취소 완료] '${snapshot.description}' 이전 상태로 되돌렸습니다. (재실행 가능: Ctrl+Y)`, false);
+    this.showToast(`[실행 취소 완료] '${snapshot.description}' 이전 상태로 되돌렸습니다. (재실행: Ctrl+Y)`, false);
   }
 
   handleRedo() {
@@ -1517,8 +1524,10 @@ class TimetableApp {
       description: '다시 실행 전 상태',
       timestamp: Date.now(),
       activeYear: this.activeYear,
+      activeGrade: this.activeGrade || '2',
       activeSemester: this.activeSemester,
       academicYears: JSON.parse(JSON.stringify(this.academicYears)),
+      grades: JSON.parse(JSON.stringify(this.grades || ['2', '3'])),
       yearsData: JSON.parse(JSON.stringify(this.yearsData))
     };
     if (!this.undoStack) this.undoStack = [];
@@ -1531,8 +1540,10 @@ class TimetableApp {
     if (!snapshot) return;
 
     this.activeYear = snapshot.activeYear;
+    this.activeGrade = snapshot.activeGrade || '2';
     this.activeSemester = snapshot.activeSemester;
     this.academicYears = snapshot.academicYears;
+    this.grades = snapshot.grades || ['2', '3'];
     this.yearsData = snapshot.yearsData;
 
     this.loadActiveYearSemesterData();
@@ -1543,6 +1554,91 @@ class TimetableApp {
     this.updateUndoRedoButtonUI();
 
     this.showToast(`[다시 실행 완료] '${snapshot.description}' 작업을 다시 적용했습니다.`, false);
+  }
+
+  // ==========================================
+  // [JSON 파일 관리 시스템: 내보내기(저장) & 불러오기]
+  // ==========================================
+  exportJsonFile() {
+    try {
+      this.saveActiveYearSemesterData();
+      const exportData = {
+        activeYear: this.activeYear,
+        activeGrade: this.activeGrade,
+        activeSemester: this.activeSemester,
+        academicYears: this.academicYears,
+        grades: this.grades,
+        yearsData: this.yearsData,
+        periods: this.periods,
+        days: this.days,
+        students: this.students,
+        masterStudents: this.masterStudents,
+        courseEnrollments: this.courseEnrollments,
+        courseSchedules: this.courseSchedules,
+        courseStatus: this.courseStatus || {},
+        offeredSubjects: this.offeredSubjects,
+        subjectColorMap: this.subjectColorMap,
+        showWeekends: this.showWeekends,
+        lastUpdated: new Date().toISOString()
+      };
+
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      a.href = url;
+      a.download = `timetable-db_${this.activeYear}학년도_${this.activeGrade}학년_${this.activeSemester}학기_${nowStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      this.showToast(`시간표 전체 데이터가 JSON 파일로 저장(다운로드)되었습니다.`);
+    } catch (e) {
+      console.error('Failed to export JSON file:', e);
+      alert('JSON 파일 내보내기 중 오류가 발생했습니다: ' + e.message);
+    }
+  }
+
+  triggerImportJson() {
+    const input = document.getElementById('input-import-json');
+    if (input) {
+      input.value = '';
+      input.click();
+    }
+  }
+
+  handleImportJson(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const parsed = JSON.parse(text);
+
+        // 기본 유효성 검사
+        if (!parsed || typeof parsed !== 'object' || (!parsed.yearsData && !parsed.periods && !parsed.masterStudents && !parsed.students)) {
+          alert('유효하지 않은 시간표 JSON 파일 형식입니다. 파일 내용을 확인해주세요.');
+          return;
+        }
+
+        // 현재 상태를 실행 취소(되돌리기) 스택에 보존
+        this.pushUndoSnapshot('JSON 데이터 불러오기 전 상태');
+
+        // 데이터 적용
+        this.applyExternalData(parsed, `[${file.name}] JSON 파일에서 시간표 데이터를 성공적으로 불러왔습니다.`);
+      } catch (err) {
+        console.error('Failed to parse imported JSON:', err);
+        alert('JSON 파일 파싱 오류: 올바른 JSON 파일인지 확인해주세요.\n' + err.message);
+      }
+    };
+    reader.onerror = () => {
+      alert('파일을 읽는 중 오류가 발생했습니다.');
+    };
+    reader.readAsText(file, 'utf-8');
   }
 
   updateUndoRedoButtonUI() {
@@ -3341,6 +3437,10 @@ class TimetableApp {
       }
     });
 
+    if (addedCount > 0) {
+      this.pushUndoSnapshot(`학생 ${addedCount}명 '${subjectName}' 편제`);
+    }
+
     this.rebuildStudentAssignments();
     this.saveState();
     this.render();
@@ -3503,6 +3603,7 @@ class TimetableApp {
 
   handleRemoveBucketSchedule(subjectName, scheduleId) {
     if (!this.courseSchedules[subjectName]) return;
+    this.pushUndoSnapshot(`'${subjectName}' 과목 시간표 배치 해제`);
     this.courseSchedules[subjectName] = this.courseSchedules[subjectName].filter(sch => {
       const schKey = sch.id || (sch.day + '_' + sch.periodId);
       return schKey !== scheduleId;
@@ -3510,7 +3611,7 @@ class TimetableApp {
     this.rebuildStudentAssignments();
     this.saveState();
     this.render();
-    this.showToast(`'${subjectName}' 과목의 시간표 배치가 해제되었습니다.`);
+    this.showToast(`'${subjectName}' 과목의 시간표 배치가 해제되었습니다.`, true);
   }
 
   // ==========================================
@@ -4019,6 +4120,8 @@ class TimetableApp {
       return false;
     }
 
+    this.pushUndoSnapshot(`'${subjectName}' 시간표 배치 (${ExcelService.dayIdToName(day)} ${periodObj ? periodObj.name : periodId})`);
+
     this.courseSchedules[subjectName].push({
       id: `sch_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       day: day,
@@ -4049,6 +4152,7 @@ class TimetableApp {
       sch.day === fromDay && (sch.periodId === fromPeriodId || (!sch.periodId && sch.period === (this.periods.find(p => p.id === fromPeriodId)?.period)))
     );
     if (slot) {
+      this.pushUndoSnapshot(`'${subjectName}' 시간표 이동`);
       slot.day = toDay;
       slot.periodId = toPeriodId;
       slot.period = periodObj ? periodObj.period : null;
@@ -4062,6 +4166,7 @@ class TimetableApp {
 
   handleRemoveCourseScheduleSlot(subjectName, scheduleId) {
     if (!this.courseSchedules[subjectName]) return;
+    this.pushUndoSnapshot(`'${subjectName}' 시간표 배치 취소`);
     this.courseSchedules[subjectName] = this.courseSchedules[subjectName].filter(sch => {
       const schKey = sch.id || (sch.day + '_' + sch.periodId);
       return schKey !== scheduleId;
@@ -4069,7 +4174,7 @@ class TimetableApp {
     this.rebuildStudentAssignments();
     this.saveState();
     this.render();
-    this.showToast(`'${subjectName}' 배치가 취소되었습니다.`);
+    this.showToast(`'${subjectName}' 배치가 취소되었습니다.`, true);
   }
 
   toggleCourseScheduleStatus(subjectName, scheduleId) {
@@ -4080,6 +4185,7 @@ class TimetableApp {
     });
     if (!slot) return;
 
+    this.pushUndoSnapshot(`'${subjectName}' 상태 변경`);
     if (slot.status === 'confirmed') slot.status = 'adjust';
     else if (slot.status === 'adjust') slot.status = 'canceled';
     else slot.status = 'confirmed';
@@ -4087,7 +4193,7 @@ class TimetableApp {
     this.rebuildStudentAssignments();
     this.saveState();
     this.render();
-    this.showToast(`'${subjectName}' 상태가 [${ExcelService.getStatusText(slot.status)}]로 변경되었습니다.`);
+    this.showToast(`'${subjectName}' 상태가 [${ExcelService.getStatusText(slot.status)}]로 변경되었습니다.`, true);
   }
 
   // ==========================================
@@ -5017,6 +5123,8 @@ class TimetableApp {
       alert('학생 성명을 입력해주세요.');
       return;
     }
+
+    this.pushUndoSnapshot(`[${studentCode} ${name}] 학생 정보 수정`);
 
     // 인적사항 갱신
     student.grade = grade;

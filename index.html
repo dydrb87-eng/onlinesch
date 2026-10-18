@@ -80,6 +80,19 @@
           <span>학급 시간표 엑셀</span>
         </button>
 
+        <div class="h-5 w-px bg-slate-200"></div>
+
+        <!-- 3. JSON 데이터 관리 (불러오기 / 저장) -->
+        <button id="btn-import-json" onclick="window.app.triggerImportJson()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition shadow-2xs" title="JSON 파일에서 시간표·학생 데이터 불러오기 (Import)">
+          <i data-lucide="file-up" class="w-3.5 h-3.5 text-blue-600"></i>
+          <span>JSON 불러오기</span>
+        </button>
+        <button id="btn-export-json" onclick="window.app.exportJsonFile()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition shadow-2xs" title="현재 전체 시간표 데이터를 JSON 파일로 백업/저장 (Export)">
+          <i data-lucide="file-down" class="w-3.5 h-3.5 text-indigo-600"></i>
+          <span>JSON 저장</span>
+        </button>
+        <input type="file" id="input-import-json" accept=".json,application/json" class="hidden" onchange="window.app.handleImportJson(event)">
+
         <!-- 5. 인쇄 및 기타 -->
         <button id="btn-print" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 transition" title="시간표 인쇄 (A4 가로 최적화)">
           <i data-lucide="printer" class="w-3.5 h-3.5"></i>
@@ -267,13 +280,6 @@
       </div>
 
       <div class="hidden md:flex items-center gap-3 text-slate-600 text-[11px]">
-        <div class="inline-flex items-center gap-2.5 bg-slate-100 px-2.5 py-0.5 rounded font-medium border border-slate-200">
-          <span class="font-bold text-slate-700">상태 기호:</span>
-          <span>🟢 확정</span>
-          <span class="inline-flex items-center gap-0.5 font-bold text-amber-600"><span class="text-amber-500 font-black text-xs">▲</span> 조정</span>
-          <span class="text-slate-500 font-semibold line-through">✖️ 폐강(회색)</span>
-        </div>
-        <span class="text-slate-400">|</span>
         <span>Ctrl 누르고 드래그 시 <strong>복사(+)</strong></span>
       </div>
     </div>

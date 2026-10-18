@@ -572,7 +572,7 @@ const ExcelService = {
   },
 
   // 5. 결괏값 형태 1: 학급 시간표 형태 (파스텔톤 디자인 멀티시트 엑셀)
-  async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교') {
+  async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교', courseEnrollments = null, masterStudents = null) {
     const workbook = new ExcelJS.Workbook();
     const yearLabel = `${academicYear}학년도 ${semester}학기`;
     const filePrefix = `${academicYear}학년도_${semester}학기_${schoolName}`;
@@ -610,6 +610,106 @@ const ExcelService = {
         `${yearLabel} ${schoolName} [${grade}학년 ${classNum}반] 시간표`.trim()
       );
     }
+
+    // 5-3. [신규 탭] 수강자 전체 명단 시트 구성 (항목: 학년도, 학기, 과목명, 학번, 학생 이름)
+    const rosterSheet = workbook.addWorksheet('수강자 전체 명단', { views: [{ showGridLines: true }] });
+    rosterSheet.columns = [
+      { header: '학년도', key: 'academicYear', width: 15 },
+      { header: '학기', key: 'semester', width: 12 },
+      { header: '과목명', key: 'subject', width: 28 },
+      { header: '학번', key: 'studentCode', width: 14 },
+      { header: '학생 이름', key: 'studentName', width: 18 }
+    ];
+
+    // 헤더 행 스타일
+    const rHeaderRow = rosterSheet.getRow(1);
+    rHeaderRow.height = 30;
+    rHeaderRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1E3A8A' } // 짙은 네이비
+      };
+      cell.font = { name: '맑은 고딕', size: 10.5, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      this.applyBorder(cell);
+    });
+
+    // 수강자 행 데이터 작성
+    const rosterRows = [];
+    const studentMasterMap = new Map();
+    if (masterStudents && Array.isArray(masterStudents)) {
+      masterStudents.forEach(m => studentMasterMap.set(m.id, m));
+    }
+
+    if (courseEnrollments && typeof courseEnrollments === 'object') {
+      // 과목 수강자(courseEnrollments) 기반 추출
+      Object.entries(courseEnrollments).forEach(([subject, studentIds]) => {
+        if (!Array.isArray(studentIds)) return;
+        studentIds.forEach(id => {
+          const m = studentMasterMap.get(id);
+          if (m) {
+            const code = m.studentCode || this.getStudentCode(m);
+            rosterRows.push({
+              academicYear: `${academicYear}학년도`,
+              semester: `${semester}학기`,
+              subject: subject,
+              studentCode: code,
+              studentName: m.name,
+              sortKey: `${code}_${subject}`
+            });
+          }
+        });
+      });
+    }
+
+    // 만약 courseEnrollments가 비어있거나 없는 경우 students 배열에서 유니크하게 추출
+    if (rosterRows.length === 0 && students && Array.isArray(students)) {
+      const seen = new Set();
+      students.forEach(s => {
+        if (!s.subject || !s.name) return;
+        const code = s.studentCode || this.getStudentCode(s);
+        const key = `${code}_${s.subject}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          rosterRows.push({
+            academicYear: `${academicYear}학년도`,
+            semester: `${semester}학기`,
+            subject: s.subject,
+            studentCode: code,
+            studentName: s.name,
+            sortKey: `${code}_${s.subject}`
+          });
+        }
+      });
+    }
+
+    // 학번 -> 과목명 순 정렬
+    rosterRows.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'ko'));
+
+    // 데이터 행 추가
+    rosterRows.forEach((rData, idx) => {
+      const row = rosterSheet.addRow({
+        academicYear: rData.academicYear,
+        semester: rData.semester,
+        subject: rData.subject,
+        studentCode: rData.studentCode,
+        studentName: rData.studentName
+      });
+      row.height = 24;
+      const isEven = idx % 2 === 1;
+
+      row.eachCell((cell, colNum) => {
+        cell.font = { name: '맑은 고딕', size: 10, color: { argb: 'FF1E293B' } };
+        cell.alignment = { vertical: 'middle', horizontal: colNum === 3 ? 'left' : 'center' };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' }
+        };
+        this.applyBorder(cell);
+      });
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
     this.saveFile(buffer, `${filePrefix}_학급_시간표_${this.getTimestamp()}.xlsx`);
@@ -662,6 +762,12 @@ const ExcelService = {
     periods.forEach((period) => {
       const row = sheet.getRow(currentExcelRow);
       row.height = period.isBreak ? 28 : 55;
+
+      // 1~4교시 및 점심시간은 기본 숨기기(hidden: true) 처리
+      const pNum = Number(period.period);
+      if ((pNum >= 1 && pNum <= 4) || period.id === 'p_lunch' || (period.name && (period.name.includes('1교시') || period.name.includes('2교시') || period.name.includes('3교시') || period.name.includes('4교시') || period.name.includes('점심')))) {
+        row.hidden = true;
+      }
 
       const periodCell = row.getCell(1);
       periodCell.value = period.isBreak

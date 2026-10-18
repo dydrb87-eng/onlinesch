@@ -192,8 +192,11 @@ class TimetableApp {
       this.yearsData[year] = {};
     }
 
-    // 만약 yearsData[year]에 '2'와 '3' 학년 키로 분리되어 있는 구조라면 원래의 단일 '1', '2' 학기로 완전 병합!
-    if (this.yearsData[year]['2'] || this.yearsData[year]['3']) {
+    // 만약 yearsData[year]에 '2'와 '3' 학년 키로 분리되어 있는 레거시 3계층 구조라면 단일 '1', '2' 학기로 완전 병합
+    const isLegacyGradeStructure = 
+      (this.yearsData[year]['2'] && (this.yearsData[year]['2']['1'] || this.yearsData[year]['2']['2'])) ||
+      (this.yearsData[year]['3'] && (this.yearsData[year]['3']['1'] || this.yearsData[year]['3']['2']));
+    if (isLegacyGradeStructure) {
       const g2 = this.yearsData[year]['2'] || {};
       const g3 = this.yearsData[year]['3'] || {};
       const mergedSem1 = this.mergeSemesterData(g2['1'], g3['1']);

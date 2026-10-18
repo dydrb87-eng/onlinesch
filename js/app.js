@@ -419,13 +419,8 @@ class TimetableApp {
   loadState() {
     try {
       let saved = localStorage.getItem(this.storageKey);
-      if (!saved) {
-        // v4, v3 레거시 키 순차 확인
-        saved = localStorage.getItem(this.legacyStorageKey);
-      }
-      if (!saved) {
-        saved = localStorage.getItem(this.legacyStorageKeyV3);
-      }
+      if (!saved) saved = localStorage.getItem(this.legacyStorageKey);
+      if (!saved) saved = localStorage.getItem(this.legacyStorageKeyV3);
 
       if (saved) {
         const data = JSON.parse(saved);
@@ -435,7 +430,6 @@ class TimetableApp {
         if (!this.academicYears.includes('2026')) this.academicYears.push('2026');
         this.academicYears = Array.from(new Set(this.academicYears.filter(y => y && !['undefined', 'null'].includes(String(y)))));
 
-        // 기본 작업 학년도: 2027학년도, 기본 학기: 1학기
         this.activeYear = data.activeYear || '2027';
         this.activeSemester = data.activeSemester || '1';
 
@@ -445,19 +439,32 @@ class TimetableApp {
         this.ensureYearSemesterData('2026', '2');
 
         this.loadActiveYearSemesterData();
+
+        // 만약 로컬스토리지에 학생 데이터가 0명으로 비어있다면 즉시 INITIAL_YEARS_DATA로 복원
+        if ((!this.masterStudents || this.masterStudents.length === 0) && typeof INITIAL_YEARS_DATA !== 'undefined') {
+          this.yearsData = JSON.parse(JSON.stringify(INITIAL_YEARS_DATA));
+          this.ensureYearSemesterData('2027', '1');
+          this.ensureYearSemesterData('2027', '2');
+          this.loadActiveYearSemesterData();
+          this.saveState();
+        }
         return;
       }
     } catch (e) {
       console.error('Failed to load state:', e);
     }
 
-    // 초기 상태 (2027학년도 1학기 기본)
+    // 초기 상태 (2027학년도 1학기 기본 - INITIAL_YEARS_DATA 즉시 적용)
     this.activeYear = '2027';
     this.activeSemester = '1';
     this.academicYears = ['2027', '2026'];
+    if (typeof INITIAL_YEARS_DATA !== 'undefined') {
+      this.yearsData = JSON.parse(JSON.stringify(INITIAL_YEARS_DATA));
+    }
     this.ensureYearSemesterData('2027', '1');
     this.ensureYearSemesterData('2027', '2');
     this.loadActiveYearSemesterData();
+    this.saveState();
   }
 
   saveState() {
@@ -1900,6 +1907,7 @@ class TimetableApp {
       modal.classList.add('hidden');
       modal.classList.remove('flex');
       modal.style.setProperty('display', 'none', 'important');
+    }
   }
 
   submitTimetableTabModal() {

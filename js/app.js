@@ -492,11 +492,10 @@ class TimetableApp {
       if (!this.academicYears.includes('2026')) this.academicYears.unshift('2026');
       if (!this.academicYears.includes('2027')) this.academicYears.push('2027');
       if (data.activeYear && this.academicYears.includes(data.activeYear)) this.activeYear = data.activeYear;
-      if (data.activeGrade && ['2', '3'].includes(String(data.activeGrade))) this.activeGrade = String(data.activeGrade);
-      if (data.activeSemester) this.activeSemester = data.activeSemester;
+      this.activeSemester = data.activeSemester || '1';
     }
 
-    this.ensureYearSemesterData(this.activeYear, this.activeGrade, this.activeSemester);
+    this.ensureYearSemesterData(this.activeYear, this.activeSemester);
     this.loadActiveYearSemesterData();
     this.sortPeriods();
     this.buildSubjectColorMap();
@@ -506,12 +505,12 @@ class TimetableApp {
   }
 
   resetToDefaults(showConfirm = true) {
-    if (showConfirm && !confirm(`현재 [${this.activeYear}학년도 ${this.activeGrade}학년 ${this.activeSemester}학기] 데이터를 초기화하시겠습니까?`)) {
+    if (showConfirm && !confirm(`현재 [${this.activeYear}학년도 ${this.activeSemester}학기] 데이터를 초기화하시겠습니까?`)) {
       return;
     }
-    this.pushUndoSnapshot(`[${this.activeYear}학년도 ${this.activeGrade}학년 ${this.activeSemester}학기] 초기화 전 상태`);
-    this.ensureYearSemesterData(this.activeYear, this.activeGrade, this.activeSemester);
-    this.yearsData[this.activeYear][this.activeGrade][this.activeSemester] = this.createDefaultSemesterData();
+    this.pushUndoSnapshot(`[${this.activeYear}학년도 ${this.activeSemester}학기] 초기화 전 상태`);
+    this.ensureYearSemesterData(this.activeYear, this.activeSemester);
+    this.yearsData[this.activeYear][this.activeSemester] = this.createDefaultSemesterData();
     this.loadActiveYearSemesterData();
     this.buildSubjectColorMap();
     this.saveState();
@@ -996,14 +995,13 @@ class TimetableApp {
     // 1. 현재 작업 중인 활성 학기 데이터를 확실히 저장 동기화
     this.saveActiveYearSemesterData();
 
-    const targetYear = this.activeYear || '2026';
-    const targetGrade = this.activeGrade || '2';
+    const targetYear = this.activeYear || '2027';
 
-    this.ensureYearSemesterData(targetYear, targetGrade, '1');
-    this.ensureYearSemesterData(targetYear, targetGrade, '2');
+    this.ensureYearSemesterData(targetYear, '1');
+    this.ensureYearSemesterData(targetYear, '2');
 
-    const sem1Data = (this.yearsData[targetYear] && this.yearsData[targetYear][targetGrade] && this.yearsData[targetYear][targetGrade]['1']) || {};
-    const sem2Data = (this.yearsData[targetYear] && this.yearsData[targetYear][targetGrade] && this.yearsData[targetYear][targetGrade]['2']) || {};
+    const sem1Data = (this.yearsData[targetYear] && this.yearsData[targetYear]['1']) || {};
+    const sem2Data = (this.yearsData[targetYear] && this.yearsData[targetYear]['2']) || {};
 
     const sem1Enrollments = sem1Data.courseEnrollments || {};
     const sem2Enrollments = sem2Data.courseEnrollments || {};
@@ -1084,14 +1082,13 @@ class TimetableApp {
     const collectForSemester = (sem) => {
       const subjectMap = new Map(); // subject -> { subject, status, studentMap }
 
-      gradeKeys.forEach(gKey => {
-        this.ensureYearSemesterData(targetYear, gKey, sem);
-        const semObj = (yearData[gKey] && yearData[gKey][sem]) || {};
-        const offered = semObj.offeredSubjects || [];
-        const enrollments = semObj.courseEnrollments || {};
-        const masters = semObj.masterStudents || [];
-        const masterMap = new Map(masters.map(s => [s.id, s]));
-        const courseStatus = semObj.courseStatus || {};
+      this.ensureYearSemesterData(targetYear, sem);
+      const semObj = yearData[sem] || {};
+      const offered = semObj.offeredSubjects || [];
+      const enrollments = semObj.courseEnrollments || {};
+      const masters = semObj.masterStudents || [];
+      const masterMap = new Map(masters.map(s => [s.id, s]));
+      const courseStatus = semObj.courseStatus || {};
 
         offered.forEach(sub => {
           if (!subjectMap.has(sub)) {
@@ -1112,7 +1109,6 @@ class TimetableApp {
             }
           });
         });
-      });
 
       // 과목명 가나다순 정렬
       const sortedSubjects = Array.from(subjectMap.values()).sort((a, b) => a.subject.localeCompare(b.subject, 'ko'));
@@ -1728,15 +1724,14 @@ class TimetableApp {
     this.updateWeekendToggleBtn();
     this.updateUndoButtonUI();
 
-    if (this.currentWorkflowTab === 'step1') {
-      this.renderStep1StudentList();
-      this.renderSubjectBuckets();
-      this.populateBatchSubjectSelect();
-    } else {
-      this.renderTimetableVersionTabs();
-      this.renderStep2Palette();
-      this.renderTimetable();
-    }
+    // 1단계 & 2단계 컴포넌트 모두 항상 렌더링 유지 (탭 전환 및 모달 즉시 반응 보장)
+    this.renderStep1StudentList();
+    this.renderSubjectBuckets();
+    this.populateBatchSubjectSelect();
+
+    this.renderTimetableVersionTabs();
+    this.renderStep2Palette();
+    this.renderTimetable();
 
     if (window.lucide) window.lucide.createIcons();
   }
@@ -1883,6 +1878,7 @@ class TimetableApp {
 
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    modal.style.setProperty('display', 'flex', 'important');
     inputEl.focus();
     inputEl.select();
     if (window.lucide) window.lucide.createIcons();
@@ -1893,7 +1889,7 @@ class TimetableApp {
     if (modal) {
       modal.classList.add('hidden');
       modal.classList.remove('flex');
-    }
+      modal.style.setProperty('display', 'none', 'important');
   }
 
   submitTimetableTabModal() {

@@ -1,0 +1,298 @@
+/* Custom Styles for Gangwon Online School Timetable System */
+
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+:root {
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --bg-app: #F8FAFC;
+}
+
+body {
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  background-color: var(--bg-app);
+  color: #1E293B;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Timetable Grid & Cell Styles */
+.timetable-cell {
+  min-height: 85px;
+  transition: all 0.15s ease-in-out;
+  position: relative;
+}
+
+.timetable-cell.drag-over {
+  background-color: #EFF6FF !important;
+  border: 2px dashed #3B82F6 !important;
+  box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.15);
+}
+
+/* Bucket & Drop Zones for Step 1 (2배 커진 드롭존 및 바구니 카드) */
+.bucket-card {
+  flex-shrink: 0 !important;
+  min-height: fit-content;
+  width: 100%;
+}
+
+.bucket-drop-zone {
+  min-height: 110px;
+  border: 2px dashed #93C5FD;
+  border-radius: 14px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: #F8FAFC;
+}
+
+.bucket-drop-zone:hover {
+  border-color: #3B82F6;
+  background-color: #EFF6FF;
+}
+
+.bucket-drop-zone.drag-over {
+  border-color: #1D4ED8 !important;
+  background-color: #DBEAFE !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25);
+  transform: scale(1.015);
+}
+
+/* Side Subject List Items (드롭존 겸용) */
+.side-subject-item {
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.side-subject-item:hover {
+  transform: translateX(2px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+
+.side-subject-item.drag-over {
+  border-color: #2563EB !important;
+  background-color: #DBEAFE !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3) !important;
+  transform: scale(1.025) !important;
+}
+
+/* Draggable Student Cards */
+.draggable-student-item {
+  cursor: grab;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.draggable-student-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+.draggable-student-item:active {
+  cursor: grabbing;
+}
+
+.draggable-student-item.is-dragging {
+  opacity: 0.4;
+  transform: scale(0.96);
+}
+
+/* Draggable Palette Subject */
+.draggable-palette-subject {
+  cursor: grab;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.draggable-palette-subject:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.draggable-palette-subject:active {
+  cursor: grabbing;
+}
+
+.draggable-palette-subject.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.96);
+}
+
+/* Ctrl Copy Mode Cursor */
+body.is-copy-mode,
+body.is-copy-mode .subject-card,
+body.is-copy-mode .draggable-palette-subject,
+body.is-copy-mode .timetable-cell {
+  cursor: copy !important;
+}
+
+/* Card Dragging */
+.subject-card {
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.subject-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+.subject-card:active {
+  cursor: grabbing;
+}
+
+.subject-card.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.96);
+}
+
+/* Status Styles */
+.subject-card.is-canceled {
+  background-color: #E2E8F0 !important;
+  color: #64748B !important;
+  border-color: #CBD5E1 !important;
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.subject-card.is-adjust {
+  border-style: dashed !important;
+  border-width: 1.5px !important;
+}
+
+/* Badge & Tag Styling */
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 3px 7px;
+  line-height: 1.25;
+  font-size: 0.8125rem;
+  border-width: 1px;
+}
+
+/* Inline Time Input */
+.time-input-inline {
+  width: 62px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: center;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #475569;
+  padding: 1px 2px;
+  transition: all 0.15s;
+}
+
+.time-input-inline:hover {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+}
+
+.time-input-inline:focus {
+  background: #FFFFFF;
+  border-color: #3B82F6;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Checkbox Accent */
+input[type="checkbox"] {
+  accent-color: #2563EB;
+  cursor: pointer;
+}
+
+/* 과목 하이라이트(선택 강조) 전용 스타일 */
+.subject-card.is-highlighted {
+  border: 2.5px solid #4F46E5 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.45), 0 10px 25px -5px rgba(79, 70, 229, 0.3) !important;
+  transform: translateY(-2px) scale(1.03) !important;
+  z-index: 30 !important;
+  animation: pulse-highlight 2s infinite ease-in-out;
+}
+
+@keyframes pulse-highlight {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.45), 0 8px 20px rgba(79, 70, 229, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.7), 0 14px 28px rgba(79, 70, 229, 0.4);
+  }
+}
+
+.subject-card.is-dimmed {
+  opacity: 0.2 !important;
+  filter: grayscale(40%) !important;
+  transition: opacity 0.2s ease, filter 0.2s ease !important;
+}
+
+.subject-card.is-dimmed:hover {
+  opacity: 0.8 !important;
+  filter: none !important;
+}
+
+/* 하이라이트된 과목이 위치한 시간표 셀 */
+.timetable-cell.has-highlight {
+  background-color: #EEF2FF !important;
+  outline: 2px dashed #818CF8 !important;
+  outline-offset: -2px;
+}
+
+/* Print Optimization */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  .no-print,
+  #sidebar-container,
+  #header-actions,
+  #period-add-btn-wrapper,
+  #tab-controls,
+  #modal-container {
+    display: none !important;
+  }
+
+  #main-container {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .timetable-wrapper {
+    box-shadow: none !important;
+    border: 1px solid #CBD5E1 !important;
+  }
+
+  .timetable-cell {
+    min-height: 60px !important;
+    page-break-inside: avoid;
+  }
+
+  .subject-card {
+    box-shadow: none !important;
+    border-width: 1px !important;
+  }
+}

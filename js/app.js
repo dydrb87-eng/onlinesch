@@ -1851,7 +1851,127 @@ class TimetableApp {
     this.showToast(`[${newTab.name}] 시간표 시안으로 전환되었습니다.`);
   }
 
+  // ==========================================
+  // 시안 탭 전용 모달 대화상자 제어
+  // ==========================================
+  openTimetableTabModal(mode = 'add') {
+    this._tabModalMode = mode;
+    const modal = document.getElementById('modal-timetable-tab-input');
+    const titleEl = document.getElementById('modal-timetable-tab-title');
+    const inputEl = document.getElementById('input-timetable-tab-name');
+    const copyOptionEl = document.getElementById('modal-timetable-tab-copy-option');
+    const curTab = this.timetableTabs.find(t => t.id === this.activeTimetableTabId);
+
+    if (!modal || !inputEl) {
+      // Fallback: 모달이 없을 경우 브라우저 prompt 사용
+      if (mode === 'add') this.handleAddTimetableTabPrompt();
+      else this.handleRenameActiveTimetableTabPrompt();
+      return;
+    }
+
+    if (mode === 'add') {
+      const now = new Date();
+      const defaultName = `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}. 수요조사`;
+      if (titleEl) titleEl.innerHTML = `<i data-lucide="layers" class="w-4 h-4 text-indigo-600"></i><span>새 시간표 시안 탭 추가</span>`;
+      inputEl.value = defaultName;
+      if (copyOptionEl) copyOptionEl.classList.remove('hidden');
+    } else {
+      if (titleEl) titleEl.innerHTML = `<i data-lucide="edit-3" class="w-4 h-4 text-indigo-600"></i><span>시안 탭 이름 변경</span>`;
+      inputEl.value = curTab ? curTab.name : '';
+      if (copyOptionEl) copyOptionEl.classList.add('hidden');
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    inputEl.focus();
+    inputEl.select();
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  closeTimetableTabModal() {
+    const modal = document.getElementById('modal-timetable-tab-input');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  }
+
+  submitTimetableTabModal() {
+    const inputEl = document.getElementById('input-timetable-tab-name');
+    if (!inputEl) return;
+    const name = inputEl.value.trim();
+    if (!name) {
+      alert('시안 탭 이름을 입력해주세요.');
+      inputEl.focus();
+      return;
+    }
+
+    const mode = this._tabModalMode || 'add';
+
+    if (mode === 'add') {
+      if (this.timetableTabs.some(t => t.name === name)) {
+        alert(`'${name}' 시안 탭이 이미 존재합니다. 다른 이름을 입력해주세요.`);
+        inputEl.focus();
+        return;
+      }
+
+      const copyCurrent = document.getElementById('check-timetable-tab-copy-current')?.checked ?? true;
+      this.pushUndoSnapshot(`새 시안 탭 '${name}' 추가`);
+
+      // 현재 탭 동기화
+      const curTab = this.timetableTabs.find(t => t.id === this.activeTimetableTabId);
+      if (curTab) {
+        curTab.schedules = JSON.parse(JSON.stringify(this.courseSchedules || {}));
+      }
+
+      const newTab = {
+        id: `tab_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        name: name,
+        schedules: copyCurrent ? JSON.parse(JSON.stringify(this.courseSchedules || {})) : {}
+      };
+
+      this.timetableTabs.push(newTab);
+      this.activeTimetableTabId = newTab.id;
+      this.courseSchedules = JSON.parse(JSON.stringify(newTab.schedules));
+
+      this.rebuildStudentAssignments();
+      this.saveState();
+      this.renderTimetableVersionTabs();
+      this.renderTimetable();
+      this.renderStep2Palette();
+
+      this.closeTimetableTabModal();
+      this.showToast(`'${name}' 시간표 시안 탭이 생성되었습니다!`, true);
+
+    } else if (mode === 'rename') {
+      const curTab = this.timetableTabs.find(t => t.id === this.activeTimetableTabId);
+      if (!curTab) return;
+
+      if (this.timetableTabs.some(t => t.id !== curTab.id && t.name === name)) {
+        alert(`'${name}' 이름의 탭이 이미 존재합니다.`);
+        inputEl.focus();
+        return;
+      }
+
+      this.pushUndoSnapshot(`시안 탭 이름 변경 ('${curTab.name}' -> '${name}')`);
+      curTab.name = name;
+      this.saveState();
+      this.renderTimetableVersionTabs();
+      this.closeTimetableTabModal();
+      this.showToast(`시안 탭 이름이 '${name}'(으)로 변경되었습니다.`, true);
+    }
+  }
+
   handleAddTimetableTab() {
+    this.openTimetableTabModal('add');
+  }
+
+  handleRenameActiveTimetableTab() {
+    this.openTimetableTabModal('rename');
+  }
+
+  // Fallback prompt implementations
+  handleAddTimetableTabPrompt() {
     const now = new Date();
     const defaultName = `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}. 수요조사`;
     const tabName = prompt('새로운 시간표 시안(탭) 이름을 입력하세요:\n(예: 11.01. 수요조사, 수강신청 1차 등)', defaultName);
@@ -1892,7 +2012,7 @@ class TimetableApp {
     this.showToast(`'${trimmed}' 시간표 시안 탭이 생성되었습니다!`, true);
   }
 
-  handleRenameActiveTimetableTab() {
+  handleRenameActiveTimetableTabPrompt() {
     const curTab = this.timetableTabs.find(t => t.id === this.activeTimetableTabId);
     if (!curTab) return;
 
@@ -1954,18 +2074,19 @@ class TimetableApp {
     const curTab = this.timetableTabs.find(t => t.id === this.activeTimetableTabId);
     if (!curTab) return;
 
-    if (!confirm(`'${curTab.name}' 시안 탭을 완전히 삭제하시겠습니까?\n(해당 시안의 시간표 배치가 영구히 삭제됩니다)`)) {
+    if (!confirm(`'${curTab.name}' 시간표 시안 탭을 삭제하시겠습니까?\n이 시안의 시간표 배치가 모두 삭제됩니다.`)) {
       return;
     }
 
-    this.pushUndoSnapshot(`'${curTab.name}' 시안 탭 삭제`);
+    this.pushUndoSnapshot(`시안 탭 '${curTab.name}' 삭제`);
 
-    const delIndex = this.timetableTabs.findIndex(t => t.id === this.activeTimetableTabId);
-    this.timetableTabs = this.timetableTabs.filter(t => t.id !== curTab.id);
+    const curIdx = this.timetableTabs.findIndex(t => t.id === this.activeTimetableTabId);
+    this.timetableTabs = this.timetableTabs.filter(t => t.id !== this.activeTimetableTabId);
 
-    const nextIndex = Math.max(0, delIndex - 1);
-    this.activeTimetableTabId = this.timetableTabs[nextIndex].id;
-    this.courseSchedules = JSON.parse(JSON.stringify(this.timetableTabs[nextIndex].schedules || {}));
+    // 삭제 후 다른 탭 활성화
+    const nextTab = this.timetableTabs[Math.max(0, curIdx - 1)] || this.timetableTabs[0];
+    this.activeTimetableTabId = nextTab.id;
+    this.courseSchedules = JSON.parse(JSON.stringify(nextTab.schedules || {}));
 
     this.rebuildStudentAssignments();
     this.saveState();
@@ -1974,6 +2095,40 @@ class TimetableApp {
     this.renderStep2Palette();
 
     this.showToast(`'${curTab.name}' 시안 탭이 삭제되었습니다.`, true);
+  }
+
+  // ==========================================
+  // 시간표 미배정 학생 안내 모달/팝업
+  // ==========================================
+  showUnassignedStudentsInfo() {
+    const scheduledStudentIds = new Set();
+    Object.entries(this.courseSchedules).forEach(([sub, scheds]) => {
+      if (scheds.length > 0) {
+        const enrolled = this.courseEnrollments[sub] || [];
+        enrolled.forEach(id => scheduledStudentIds.add(id));
+      }
+    });
+
+    const unassigned = this.masterStudents.filter(s => !scheduledStudentIds.has(s.id));
+    if (unassigned.length === 0) {
+      alert('현재 등록된 모든 학생의 과목이 시간표에 1교시 이상 정상 편성되어 있습니다!\n(시간표 미배정 학생 0명)');
+      return;
+    }
+
+    const lines = unassigned.map(s => {
+      const subs = Object.entries(this.courseEnrollments)
+        .filter(([sub, ids]) => ids.includes(s.id))
+        .map(([sub]) => sub);
+      
+      if (subs.length === 0) {
+        return `• ${s.studentCode || ''} ${s.name}: 어떤 과목에도 편제되어 있지 않음 (1단계 과목 편제 필요)`;
+      } else {
+        const unscheduledSubs = subs.filter(sub => !(this.courseSchedules[sub] && this.courseSchedules[sub].length > 0));
+        return `• ${s.studentCode || ''} ${s.name}\n   - 편제 과목: [${subs.join(', ')}]\n   - 미배치 사유: [${unscheduledSubs.join(', ')}] 과목이 2단계 시간표(월~금, 교시)에 아직 배치되지 않음`;
+      }
+    });
+
+    alert(`[시간표 미배정 학생 안내: 총 ${unassigned.length}명]\n\n${lines.join('\n\n')}\n\n※ 해당 과목 카드를 2단계 시간표 그리드에 드래그하여 배치하면 '배정 완료'로 전환됩니다.`);
   }
 
   // ==========================================

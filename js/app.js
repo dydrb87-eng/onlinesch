@@ -15,9 +15,7 @@
 
 class TimetableApp {
   constructor() {
-    this.storageKey = 'gw_online_school_timetable_data_v5';
-    this.legacyStorageKey = 'gw_online_school_timetable_data_v4';
-    this.legacyStorageKeyV3 = 'gw_online_school_timetable_data_v3';
+    this.storageKey = 'gw_online_school_timetable_data_v6';
     this.activeYear = '2027'; // 기본 활성 학년도: 2027학년도
     this.activeSemester = '1'; // 기본 활성 학기: 1학기 ('1' | '2')
     this.academicYears = ['2027', '2026'];
@@ -63,8 +61,8 @@ class TimetableApp {
   async init() {
     this.loadState();
 
-    // 로컬 데이터가 비어있거나 학생이 0명이면 즉시 data/timetable-db.json에서 직접 로드
-    if (!this.masterStudents || this.masterStudents.length === 0) {
+    // 로컬 스토리지에 시간표 데이터가 전혀 없는 최초 접속 시에만 data/timetable-db.json 기본 서식 로드
+    if (!localStorage.getItem(this.storageKey)) {
       try {
         const res = await fetch('data/timetable-db.json?t=' + Date.now());
         if (res.ok) {
@@ -86,21 +84,6 @@ class TimetableApp {
     this.bindEvents();
     this.render();
     this.updateSaveLocationUI();
-
-    // 백엔드/클라우드 최신 데이터 자동 동기화
-    setTimeout(async () => {
-      if (window.cloudSync) {
-        const remoteData = await window.cloudSync.loadFromBackend();
-        if (remoteData) {
-          const localCount = (this.masterStudents || []).length;
-          const shouldApply = localCount === 0;
-
-          if (shouldApply) {
-            this.applyExternalData(remoteData, '시간표 및 학생 데이터를 불러왔습니다.');
-          }
-        }
-      }
-    }, 200);
   }
 
   // ==========================================
@@ -422,9 +405,7 @@ class TimetableApp {
 
   loadState() {
     try {
-      let saved = localStorage.getItem(this.storageKey);
-      if (!saved) saved = localStorage.getItem(this.legacyStorageKey);
-      if (!saved) saved = localStorage.getItem(this.legacyStorageKeyV3);
+      const saved = localStorage.getItem(this.storageKey);
 
       if (saved) {
         const data = JSON.parse(saved);
@@ -443,27 +424,20 @@ class TimetableApp {
         this.ensureYearSemesterData('2026', '2');
 
         this.loadActiveYearSemesterData();
-
-        // 만약 로컬스토리지에 학생 데이터가 0명으로 비어있다면 즉시 INITIAL_YEARS_DATA로 복원
-        if ((!this.masterStudents || this.masterStudents.length === 0) && typeof INITIAL_YEARS_DATA !== 'undefined') {
-          this.yearsData = JSON.parse(JSON.stringify(INITIAL_YEARS_DATA));
-          this.ensureYearSemesterData('2027', '1');
-          this.ensureYearSemesterData('2027', '2');
-          this.loadActiveYearSemesterData();
-          this.saveState();
-        }
         return;
       }
     } catch (e) {
       console.error('Failed to load state:', e);
     }
 
-    // 초기 상태 (2027학년도 1학기 기본 - INITIAL_YEARS_DATA 즉시 적용)
+    // 초기 상태 (2027학년도 1학기 기본 - 학생 정보 없는 깨끗한 기본 서식 적용)
     this.activeYear = '2027';
     this.activeSemester = '1';
     this.academicYears = ['2027', '2026'];
     if (typeof INITIAL_YEARS_DATA !== 'undefined') {
       this.yearsData = JSON.parse(JSON.stringify(INITIAL_YEARS_DATA));
+    } else {
+      this.yearsData = {};
     }
     this.ensureYearSemesterData('2027', '1');
     this.ensureYearSemesterData('2027', '2');

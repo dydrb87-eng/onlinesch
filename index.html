@@ -82,25 +82,20 @@
 
         <div class="h-5 w-px bg-slate-200"></div>
 
-        <!-- 3. JSON 데이터 관리: [JSON 저장] (저장 위치 설정 화살표 포함) -> [JSON 불러오기] -->
-        <div class="relative inline-flex items-center rounded-lg shadow-2xs">
-          <button id="btn-export-json" 
-                  onclick="window.app.exportJsonFile()" 
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-l-lg bg-blue-600 hover:bg-blue-700 text-white transition border-r border-blue-500 cursor-pointer shadow-xs" 
-                  title="강원온라인학교 수강신청 현황 및 시간표 전체 데이터 JSON 파일로 저장">
-            <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
-            <span>JSON 저장</span>
-          </button>
-          <button id="btn-save-location-toggle" 
+        <!-- 3. 파일 저장 위치 메뉴 (별도 독립 메뉴) -->
+        <div class="relative inline-flex items-center">
+          <button id="btn-save-location-menu" 
                   onclick="window.app.toggleSaveLocationDropdown(event)" 
-                  class="inline-flex items-center px-2 py-1.5 text-xs font-bold rounded-r-lg bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs" 
-                  title="파일 저장 위치(폴더) 설정 및 변경 (모든 다운로드 파일에 적용)">
-            <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer shadow-2xs" 
+                  title="파일(JSON 및 엑셀 다운로드) 저장 위치 확인 및 폴더 설정">
+            <i data-lucide="folder-cog" class="w-3.5 h-3.5 text-blue-600"></i>
+            <span>저장 위치</span>
+            <span id="save-location-badge" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-normal max-w-[90px] truncate">기본</span>
           </button>
 
           <!-- 저장 위치 설정 드롭다운 팝오버 -->
           <div id="save-location-dropdown" 
-               class="hidden absolute right-0 top-full mt-1.5 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+               class="hidden absolute left-0 top-full mt-1.5 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-50 animate-in fade-in zoom-in-95 duration-100">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100 mb-2.5">
               <div class="flex items-center gap-1.5">
                 <i data-lucide="folder-cog" class="w-4 h-4 text-blue-600"></i>
@@ -141,10 +136,24 @@
           </div>
         </div>
 
-        <button id="btn-import-json" onclick="window.app.triggerImportJson()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition shadow-2xs" title="JSON 파일에서 시간표·학생 데이터 불러오기 (Import)">
+        <!-- 4. [JSON 저장] 버튼 -->
+        <button id="btn-export-json" 
+                onclick="window.app.exportJsonFile()" 
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs" 
+                title="강원온라인학교 수강신청 현황 및 시간표 전체 데이터 JSON 파일로 저장">
+          <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
+          <span>JSON 저장</span>
+        </button>
+
+        <!-- 5. [JSON 불러오기] 버튼 (점선 테두리 & 드래그 앤 드롭 영역) -->
+        <div id="btn-import-json" 
+             onclick="window.app.triggerImportJson()" 
+             class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border-2 border-dashed border-blue-400 hover:border-blue-600 bg-blue-50/70 hover:bg-blue-100/90 text-blue-700 transition cursor-pointer shadow-2xs select-none" 
+             title="JSON 파일을 이곳으로 드래그하거나 클릭하여 불러오기">
           <i data-lucide="file-up" class="w-3.5 h-3.5 text-blue-600"></i>
           <span>JSON 불러오기</span>
-        </button>
+          <span class="text-[10px] text-blue-500 font-normal hidden lg:inline">(드롭 가능)</span>
+        </div>
         <input type="file" id="input-import-json" accept=".json,application/json" class="hidden" onchange="window.app.handleImportJson(event)">
 
         <!-- 5. 인쇄 및 기타 -->

@@ -791,13 +791,43 @@ class TimetableApp {
     // 저장 위치 드롭다운 외부 클릭 시 닫기
     document.addEventListener('click', (e) => {
       const dd = document.getElementById('save-location-dropdown');
-      const toggleBtn = document.getElementById('btn-save-location-toggle');
+      const toggleBtn = document.getElementById('btn-save-location-menu') || document.getElementById('btn-save-location-toggle');
       if (dd && !dd.classList.contains('hidden')) {
         if (!dd.contains(e.target) && !toggleBtn?.contains(e.target)) {
           dd.classList.add('hidden');
         }
       }
     });
+
+    // JSON 불러오기 영역 드래그 앤 드롭 파일 로드 바인딩
+    const importDropZone = document.getElementById('btn-import-json');
+    if (importDropZone) {
+      ['dragenter', 'dragover'].forEach(evtName => {
+        importDropZone.addEventListener(evtName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          importDropZone.classList.add('border-blue-600', 'bg-blue-100', 'ring-2', 'ring-blue-400');
+        });
+      });
+
+      ['dragleave', 'dragend'].forEach(evtName => {
+        importDropZone.addEventListener(evtName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          importDropZone.classList.remove('border-blue-600', 'bg-blue-100', 'ring-2', 'ring-blue-400');
+        });
+      });
+
+      importDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        importDropZone.classList.remove('border-blue-600', 'bg-blue-100', 'ring-2', 'ring-blue-400');
+        const files = e.dataTransfer?.files;
+        if (files && files.length > 0) {
+          this.handleImportJsonFile(files[0]);
+        }
+      });
+    }
 
     // 2. 탭 1 퀵 학생 직접 등록
     document.getElementById('form-quick-add-student')?.addEventListener('submit', (e) => {
@@ -1632,18 +1662,32 @@ class TimetableApp {
 
   updateSaveLocationUI() {
     const display = document.getElementById('current-save-location-display');
-    if (!display) return;
+    const badge = document.getElementById('save-location-badge');
     const savedName = window.FileStorageService?.getSavedDirectoryName();
     if (savedName) {
-      display.innerHTML = `
-        <i data-lucide="folder-check" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i>
-        <span class="truncate text-blue-700 font-bold" title="${savedName}">${savedName}</span>
-      `;
+      if (display) {
+        display.innerHTML = `
+          <i data-lucide="folder-check" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i>
+          <span class="truncate text-blue-700 font-bold" title="${savedName}">${savedName}</span>
+        `;
+      }
+      if (badge) {
+        badge.textContent = savedName;
+        badge.className = 'text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300 font-bold max-w-[90px] truncate';
+        badge.title = savedName;
+      }
     } else {
-      display.innerHTML = `
-        <i data-lucide="folder" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-        <span class="truncate text-slate-600">브라우저 기본 다운로드 폴더</span>
-      `;
+      if (display) {
+        display.innerHTML = `
+          <i data-lucide="folder" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
+          <span class="truncate text-slate-600">브라우저 기본 다운로드 폴더</span>
+        `;
+      }
+      if (badge) {
+        badge.textContent = '기본';
+        badge.className = 'text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-normal';
+        badge.title = '기본 다운로드 폴더';
+      }
     }
     if (window.lucide) window.lucide.createIcons();
   }
@@ -1763,7 +1807,18 @@ class TimetableApp {
 
   handleImportJson(event) {
     const file = event?.target?.files?.[0];
+    if (file) {
+      this.handleImportJsonFile(file);
+    }
+  }
+
+  handleImportJsonFile(file) {
     if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.json') && file.type !== 'application/json') {
+      alert('JSON 형식의 파일(.json)만 불러올 수 있습니다.');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (e) => {

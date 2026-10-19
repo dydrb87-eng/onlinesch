@@ -85,6 +85,7 @@ class TimetableApp {
     this.buildSubjectColorMap();
     this.bindEvents();
     this.render();
+    this.updateSaveLocationUI();
 
     // 백엔드/클라우드 최신 데이터 자동 동기화
     setTimeout(async () => {
@@ -785,6 +786,17 @@ class TimetableApp {
       const banner = document.getElementById('ctrl-copy-indicator');
       if (banner) banner.classList.add('hidden');
       document.body.classList.remove('is-copy-mode');
+    });
+
+    // 저장 위치 드롭다운 외부 클릭 시 닫기
+    document.addEventListener('click', (e) => {
+      const dd = document.getElementById('save-location-dropdown');
+      const toggleBtn = document.getElementById('btn-save-location-toggle');
+      if (dd && !dd.classList.contains('hidden')) {
+        if (!dd.contains(e.target) && !toggleBtn?.contains(e.target)) {
+          dd.classList.add('hidden');
+        }
+      }
     });
 
     // 2. 탭 1 퀵 학생 직접 등록
@@ -1600,15 +1612,82 @@ class TimetableApp {
   }
 
   // ==========================================
+  // [파일 저장 위치(폴더) 관리 및 드롭다운 UI]
+  // ==========================================
+  toggleSaveLocationDropdown(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const dropdown = document.getElementById('save-location-dropdown');
+    if (!dropdown) return;
+    const isHidden = dropdown.classList.contains('hidden');
+    if (isHidden) {
+      this.updateSaveLocationUI();
+      dropdown.classList.remove('hidden');
+    } else {
+      dropdown.classList.add('hidden');
+    }
+  }
+
+  updateSaveLocationUI() {
+    const display = document.getElementById('current-save-location-display');
+    if (!display) return;
+    const savedName = window.FileStorageService?.getSavedDirectoryName();
+    if (savedName) {
+      display.innerHTML = `
+        <i data-lucide="folder-check" class="w-3.5 h-3.5 text-blue-600 shrink-0"></i>
+        <span class="truncate text-blue-700 font-bold" title="${savedName}">${savedName}</span>
+      `;
+    } else {
+      display.innerHTML = `
+        <i data-lucide="folder" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
+        <span class="truncate text-slate-600">브라우저 기본 다운로드 폴더</span>
+      `;
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  async handleChangeSaveDirectory() {
+    if (!window.FileStorageService) {
+      alert('파일 저장 서비스를 초기화할 수 없습니다.');
+      return;
+    }
+    try {
+      const dirName = await window.FileStorageService.pickDirectory();
+      this.updateSaveLocationUI();
+      this.showToast(`파일 저장 위치가 [${dirName}] 폴더로 설정(기억)되었습니다.`, true);
+      const dropdown = document.getElementById('save-location-dropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        alert(e.message || '폴더 지정 중 오류가 발생했습니다.');
+      }
+    }
+  }
+
+  async handleResetSaveDirectory() {
+    if (!window.FileStorageService) return;
+    await window.FileStorageService.clearStoredDirectoryHandle();
+    this.updateSaveLocationUI();
+    this.showToast('파일 저장 위치가 기본 다운로드 폴더로 초기화되었습니다.');
+    const dropdown = document.getElementById('save-location-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+  }
+
+  // ==========================================
   // [JSON 파일 관리 시스템: 내보내기(저장) & 불러오기]
   // ==========================================
-  exportJsonFile() {
+  async exportJsonFile() {
     try {
       this.saveActiveYearSemesterData();
       const exportData = {
+        title: '강원온라인학교 수강신청 현황 및 시간표 데이터',
+        version: '2.0',
+        exportedAt: new Date().toISOString(),
+        academicYears: this.academicYears || ['2027', '2026'],
         activeYear: this.activeYear,
         activeSemester: this.activeSemester,
-        academicYears: this.academicYears,
         yearsData: this.yearsData,
         periods: this.periods,
         days: this.days,
@@ -1622,35 +1701,56 @@ class TimetableApp {
         showWeekends: this.showWeekends,
         timetableTabs: this.timetableTabs,
         activeTimetableTabId: this.activeTimetableTabId,
+        excelStudentPool: this.excelStudentPool || [],
         lastUpdated: new Date().toISOString()
       };
 
-      const jsonStr = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      
       const now = new Date();
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
       const hh = String(now.getHours()).padStart(2, '0');
       const min = String(now.getMinutes()).padStart(2, '0');
-      const dateStr = `${yyyy}${mm}${dd}`;
-      const timeStr = `${hh}${min}`;
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const timeStamp = `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
 
-      a.href = url;
-      a.download = `${this.activeYear}학년도 강원온라인학교 시간표_${dateStr}_${timeStr}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const fileName = `강원온라인학교 수강신청 현황 및 시간표_${timeStamp}.json`;
+      const jsonStr = JSON.stringify(exportData, null, 2);
 
-      this.showToast(`[${a.download}] 파일이 성공적으로 저장(다운로드)되었습니다.`);
+      if (window.FileStorageService && typeof window.FileStorageService.saveFile === 'function') {
+        const res = await window.FileStorageService.saveFile(jsonStr, fileName, 'application/json');
+        if (res && res.savedToFolder) {
+          this.showToast(`[${res.folderName}] 폴더에 '${res.fileName}' JSON 파일이 안전하게 저장되었습니다.`, true);
+        } else {
+          this.showToast(`'${res ? res.fileName : fileName}' JSON 파일이 다운로드되었습니다.`, true);
+        }
+      } else {
+        const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showToast(`[${fileName}] 파일이 성공적으로 저장(다운로드)되었습니다.`);
+      }
     } catch (e) {
       console.error('Failed to export JSON file:', e);
       alert('JSON 파일 내보내기 중 오류가 발생했습니다: ' + e.message);
     }
+  }
+
+  // 호환성 별칭 지원
+  handleSaveJSON() {
+    return this.exportJsonFile();
+  }
+  triggerLoadJSON() {
+    return this.triggerImportJson();
+  }
+  handleLoadJSONFile(e) {
+    return this.handleImportJson(e);
   }
 
   triggerImportJson() {

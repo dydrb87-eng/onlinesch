@@ -656,12 +656,82 @@ class TimetableApp {
   // ==========================================
   // 과목 목록 정렬 (과목명 이름 순 ㄱ부터 가나다순 정렬)
   // ==========================================
-  sortOfferedSubjects() {
+  // ==========================================
+  // 과목 목록 정렬 및 순서 보존
+  // - 제외(excluded) 처리된 과목은 항상 목록 최하단으로 자동 배치
+  // - forceAlphabetical이 true일 때만 가나다순으로 강제 정렬, 평소에는 사용자가 드래그로 조정한 순서 보존
+  // ==========================================
+  sortOfferedSubjects(forceAlphabetical = false) {
     if (!this.offeredSubjects || !Array.isArray(this.offeredSubjects)) {
       this.offeredSubjects = [];
       return;
     }
-    this.offeredSubjects.sort((a, b) => (a || '').localeCompare(b || '', 'ko'));
+    this.offeredSubjects = Array.from(new Set(this.offeredSubjects.filter(Boolean)));
+
+    if (forceAlphabetical) {
+      this.offeredSubjects.sort((a, b) => {
+        const aEx = this.isSubjectExcluded(a);
+        const bEx = this.isSubjectExcluded(b);
+        if (aEx !== bEx) return aEx ? 1 : -1;
+        return (a || '').localeCompare(b || '', 'ko');
+      });
+      return;
+    }
+
+    // 기본: 사용자 지정 순서를 보존하되, 제외(excluded)된 과목은 항상 가장 하단으로 안정적 배치
+    const active = [];
+    const excluded = [];
+    this.offeredSubjects.forEach(sub => {
+      if (this.isSubjectExcluded(sub)) {
+        excluded.push(sub);
+      } else {
+        active.push(sub);
+      }
+    });
+    this.offeredSubjects = [...active, ...excluded];
+  }
+
+  // 가나다순 수동 정렬
+  sortOfferedSubjectsAlphabetically() {
+    this.pushUndoSnapshot('과목 팔레트 가나다순 정렬');
+    this.sortOfferedSubjects(true);
+    this.saveActiveYearSemesterData();
+    this.saveState();
+    this.renderStep2Palette();
+    this.showToast('과목이 가나다순으로 정렬되었습니다. (제외 과목은 하단 배치)', true);
+  }
+
+  // 과목 제외 상태 여부 확인
+  isSubjectExcluded(subjectName) {
+    return Boolean(this.courseStatus && this.courseStatus[subjectName] === 'excluded');
+  }
+
+  // 과목 제외 처리 / 제외 해제 토글
+  toggleExcludeSubject(subjectName) {
+    if (!this.courseStatus) this.courseStatus = {};
+    const isExcluded = this.isSubjectExcluded(subjectName);
+
+    this.pushUndoSnapshot(`'${subjectName}' 과목 ${isExcluded ? '제외 해제' : '제외 처리'}`);
+
+    if (isExcluded) {
+      this.courseStatus[subjectName] = 'open';
+      // 제외 해제 시 활성 과목 맨 뒤(제외 과목들 바로 위)로 재배치
+      const activeSubs = this.offeredSubjects.filter(s => s !== subjectName && !this.isSubjectExcluded(s));
+      const excludedSubs = this.offeredSubjects.filter(s => s !== subjectName && this.isSubjectExcluded(s));
+      this.offeredSubjects = [...activeSubs, subjectName, ...excludedSubs];
+      this.showToast(`'${subjectName}' 과목의 제외 처리가 해제되어 일반 과목으로 복구되었습니다.`, true);
+    } else {
+      this.courseStatus[subjectName] = 'excluded';
+      // 제외된 과목은 목록 가장 하단으로 이동
+      const others = this.offeredSubjects.filter(s => s !== subjectName);
+      this.offeredSubjects = [...others, subjectName];
+      this.showToast(`'${subjectName}' 과목이 제외 처리되어 목록 가장 하단으로 이동했습니다.`, true);
+    }
+
+    this.saveActiveYearSemesterData();
+    this.saveState();
+    this.renderStep2Palette();
+    this.renderSubjectBuckets();
   }
 
   comparePeriods(a, b) {
@@ -4175,10 +4245,21 @@ class TimetableApp {
     const badge = document.getElementById('step2-subject-count-badge');
     if (!container) return;
 
-    const visibleSubjects = this.offeredSubjects.filter(sub => this.isSubjectMatchingGradeFilter(sub));
-    if (badge) badge.textContent = `${visibleSubjects.length}개`;
+    this.sortOfferedSubjects(false);
 
-    if (visibleSubjects.length === 0) {
+    const filteredSubjects = this.offeredSubjects.filter(sub => this.isSubjectMatchingGradeFilter(sub));
+    const activeSubjects = filteredSubjects.filter(sub => !this.isSubjectExcluded(sub));
+    const excludedSubjects = filteredSubjects.filter(sub => this.isSubjectExcluded(sub));
+
+    if (badge) {
+      if (excludedSubjects.length > 0) {
+        badge.textContent = `${activeSubjects.length}개 (제외 ${excludedSubjects.length})`;
+      } else {
+        badge.textContent = `${activeSubjects.length}개`;
+      }
+    }
+
+    if (filteredSubjects.length === 0) {
       container.innerHTML = `
         <div class="py-12 text-center text-slate-400 text-xs">
           <p class="font-medium text-slate-600">해당 조건의 과목이 없습니다.</p>
@@ -4190,78 +4271,199 @@ class TimetableApp {
 
     let html = '';
 
-    visibleSubjects.forEach(sub => {
-      const color = this.getSubjectColor(sub);
-      const studentIds = this.courseEnrollments[sub] || [];
-      const schedules = this.courseSchedules[sub] || [];
-      const safeSub = encodeURIComponent(sub);
-      const status = this.getSubjectStatus(sub);
-      const isSelected = this.highlightedSubject === sub;
-      const isDimmed = Boolean(this.highlightedSubject && !isSelected);
+    // 1. 활성 과목 목록 렌더링 (사용자 드래그 순서 유지)
+    activeSubjects.forEach(sub => {
+      html += this.renderPaletteSubjectCard(sub, false);
+    });
 
+    // 2. 제외 처리된 과목 목록 렌더링 (목록 최하단 배치)
+    if (excludedSubjects.length > 0) {
       html += `
-        <div class="draggable-palette-subject p-3 rounded-xl border transition-all hover:scale-[1.01] shadow-2xs cursor-grab active:cursor-grabbing select-none ${
-          status === 'closed' ? 'opacity-60 bg-slate-100 border-slate-300' : ''
-        } ${
-          isSelected 
-            ? 'ring-2 ring-indigo-600 ring-offset-2 border-indigo-600 shadow-md scale-[1.02] bg-indigo-50/30' 
-            : (isDimmed ? 'opacity-40 hover:opacity-80' : '')
-        }"
-             style="background-color: ${isSelected ? undefined : (status === 'closed' ? '#F8FAFC' : color.bg)}; border-color: ${isSelected ? '#4F46E5' : (status === 'closed' ? '#CBD5E1' : color.border)};"
-             draggable="true"
-             onclick="if(!window.app.isDraggingPalette) window.app.toggleHighlightSubject(decodeURIComponent('${safeSub}'))"
-             ondragstart="window.app.handlePaletteDragStart(event, decodeURIComponent('${safeSub}'))"
-             ondragend="window.app.handlePaletteDragEnd(event)"
-             title="클릭: 오른쪽 시간표에서 이 과목 하이라이트 (토글) / 드래그: 시간표에 배치">
-          
-          <div class="flex items-center justify-between gap-1 mb-1.5 pointer-events-none">
-            <div class="flex items-center gap-1.5 min-w-0">
-              <i data-lucide="grip-vertical" class="w-3.5 h-3.5 shrink-0" style="color: ${status === 'closed' ? '#94A3B8' : color.text};"></i>
-              <span class="font-bold text-xs truncate ${status === 'closed' ? 'line-through text-slate-400' : ''}" style="color: ${status === 'closed' ? '#64748B' : color.text};">${sub}</span>
-            </div>
-            <div class="flex items-center gap-1 pointer-events-auto">
-              <!-- 원클릭 하이라이트 버튼 -->
-              <button type="button" 
-                      onclick="event.stopPropagation(); window.app.toggleHighlightSubject(decodeURIComponent('${safeSub}'))" 
-                      class="px-2 py-0.5 text-[11px] font-black rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0 ${
-                        isSelected 
-                          ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-400 ring-offset-1' 
-                          : 'bg-white/95 text-indigo-700 hover:bg-indigo-50 border border-indigo-200'
-                      }"
-                      title="오른쪽 시간표에서 '${sub}' 과목 하이라이트 토글">
-                <i data-lucide="sparkles" class="w-3 h-3 ${isSelected ? 'text-amber-300' : 'text-indigo-600'}"></i>
-                <span>${isSelected ? '강조중' : '강조'}</span>
-              </button>
-              ${status === 'closed' ? `
-                <span class="text-[10px] font-black px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 border border-rose-300">✖️ 폐강</span>
-              ` : (status === 'adjust' ? `
-                <span class="text-[10px] font-black px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">▲ 조정</span>
-              ` : '')}
-              <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/90 border text-slate-700 shadow-2xs">
-                ${studentIds.length}명
-              </span>
-            </div>
+        <div class="pt-3 pb-1 border-t-2 border-slate-200 mt-4 mb-2 flex items-center justify-between text-xs font-bold text-slate-500 select-none">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="ban" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span>제외 처리된 과목 (${excludedSubjects.length}개)</span>
           </div>
-
-          <div class="flex items-center justify-between text-[11px] text-slate-600 pointer-events-none">
-            <span>
-              ${schedules.length > 0 ? `
-                <strong class="text-indigo-700 font-bold">${schedules.length}시간</strong> 배치됨
-              ` : `
-                <span class="text-amber-600 font-semibold">미배치</span>
-              `}
-            </span>
-            <span class="text-[10px] text-slate-500 font-medium flex items-center gap-0.5">
-              <span>시간표로 드래그</span> &rarr;
-            </span>
-          </div>
-
+          <span class="text-[10px] text-slate-400 font-normal">시간표 편성 보류</span>
         </div>
       `;
-    });
+      excludedSubjects.forEach(sub => {
+        html += this.renderPaletteSubjectCard(sub, true);
+      });
+    }
 
     container.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // 개별 과목 팔레트 카드 HTML 렌더러
+  renderPaletteSubjectCard(sub, isExcluded) {
+    const color = this.getSubjectColor(sub);
+    const studentIds = this.courseEnrollments[sub] || [];
+    const schedules = this.courseSchedules[sub] || [];
+    const safeSub = encodeURIComponent(sub);
+    const isSelected = this.highlightedSubject === sub;
+    const isDimmed = Boolean(this.highlightedSubject && !isSelected);
+
+    return `
+      <div class="draggable-palette-subject group relative p-3 rounded-xl border transition-all hover:scale-[1.01] shadow-2xs cursor-grab active:cursor-grabbing select-none ${
+        isExcluded ? 'opacity-65 bg-slate-100/90 border-dashed border-slate-300' : ''
+      } ${
+        isSelected 
+          ? 'ring-2 ring-indigo-600 ring-offset-2 border-indigo-600 shadow-md scale-[1.02] bg-indigo-50/30' 
+          : (isDimmed ? 'opacity-40 hover:opacity-80' : '')
+      }"
+           style="background-color: ${isSelected ? undefined : (isExcluded ? '#F8FAFC' : color.bg)}; border-color: ${isSelected ? '#4F46E5' : (isExcluded ? '#CBD5E1' : color.border)};"
+           draggable="true"
+           data-subject="${safeSub}"
+           onclick="if(!window.app.isDraggingPalette) window.app.toggleHighlightSubject(decodeURIComponent('${safeSub}'))"
+           ondragstart="window.app.handlePaletteDragStart(event, decodeURIComponent('${safeSub}'))"
+           ondragend="window.app.handlePaletteDragEnd(event)"
+           ondragover="window.app.handlePaletteCardDragOver(event, decodeURIComponent('${safeSub}'))"
+           ondragleave="window.app.handlePaletteCardDragLeave(event)"
+           ondrop="window.app.handlePaletteCardDrop(event, decodeURIComponent('${safeSub}'))"
+           title="클릭: 시간표에서 강조(토글) / 위아래 드래그: 순서 이동 / 시간표로 드래그: 배치">
+        
+        <div class="flex items-center justify-between gap-1 mb-1.5">
+          <div class="flex items-center gap-1.5 min-w-0 pointer-events-none">
+            <span class="palette-drag-handle p-0.5 text-slate-400 group-hover:text-indigo-600 transition" title="위아래로 드래그하여 순서 변경">
+              <i data-lucide="grip-vertical" class="w-4 h-4 shrink-0" style="color: ${isExcluded ? '#94A3B8' : color.text};"></i>
+            </span>
+            <span class="font-bold text-xs truncate ${isExcluded ? 'line-through text-slate-400' : ''}" style="color: ${isExcluded ? '#64748B' : color.text};">${sub}</span>
+          </div>
+
+          <div class="flex items-center gap-1 pointer-events-auto">
+            <!-- 하이라이트 토글 버튼 -->
+            <button type="button" 
+                    onclick="event.stopPropagation(); window.app.toggleHighlightSubject(decodeURIComponent('${safeSub}'))" 
+                    class="px-2 py-0.5 text-[11px] font-black rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0 ${
+                      isSelected 
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-400 ring-offset-1' 
+                        : 'bg-white/95 text-indigo-700 hover:bg-indigo-50 border border-indigo-200'
+                    }"
+                    title="오른쪽 시간표에서 '${sub}' 과목 하이라이트 토글">
+              <i data-lucide="sparkles" class="w-3 h-3 ${isSelected ? 'text-amber-300' : 'text-indigo-600'}"></i>
+              <span>${isSelected ? '강조중' : '강조'}</span>
+            </button>
+
+            <!-- 제외 / 복구 처리 버튼 -->
+            ${isExcluded ? `
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 border border-slate-300 shrink-0">
+                🚫 제외됨
+              </span>
+              <button type="button" 
+                      onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))" 
+                      class="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0" 
+                      title="제외 처리를 해제하고 일반 과목으로 복구">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                <span>복구</span>
+              </button>
+            ` : `
+              <button type="button" 
+                      onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))" 
+                      class="px-1.5 py-0.5 text-[11px] font-semibold rounded-lg bg-white/90 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-300 transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100" 
+                      title="이 과목을 제외 처리하여 목록 맨 하단으로 이동">
+                <i data-lucide="ban" class="w-3 h-3"></i>
+                <span>제외</span>
+              </button>
+            `}
+
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/90 border text-slate-700 shadow-2xs shrink-0">
+              ${studentIds.length}명
+            </span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] text-slate-600 pointer-events-none pt-0.5 border-t border-black/5">
+          <span>
+            ${schedules.length > 0 ? `
+              <strong class="text-indigo-700 font-bold">${schedules.length}시간</strong> 배치됨
+            ` : `
+              <span class="text-amber-600 font-semibold">미배치</span>
+            ` }
+          </span>
+          <span class="text-[10px] text-slate-500 font-medium flex items-center gap-1">
+            ${isExcluded ? `
+              <span class="text-slate-400 font-normal">시간표 편성 제외 상태</span>
+            ` : `
+              <span class="text-slate-400">순서 이동(↕) / 시간표 배치(&rarr;)</span>
+            `}
+          </span>
+        </div>
+
+      </div>
+    `;
+  }
+
+  // 팔레트 카드 위로 드래그 시 순서 변경 인디케이터 표시
+  handlePaletteCardDragOver(e, targetSubject) {
+    if (!this.isDraggingPalette || !this.dragData || this.dragData.type !== 'palette-subject') return;
+    const sourceSubject = this.dragData.subjectName;
+    if (!sourceSubject || sourceSubject === targetSubject) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const isTop = (e.clientY - rect.top) < (rect.height / 2);
+
+    if (isTop) {
+      card.classList.add('palette-drop-top');
+      card.classList.remove('palette-drop-bottom');
+    } else {
+      card.classList.add('palette-drop-bottom');
+      card.classList.remove('palette-drop-top');
+    }
+  }
+
+  // 팔레트 카드에서 드래그 이탈 시 인디케이터 제거
+  handlePaletteCardDragLeave(e) {
+    const card = e.currentTarget;
+    if (card) {
+      card.classList.remove('palette-drop-top', 'palette-drop-bottom');
+    }
+  }
+
+  // 팔레트 카드에 드롭 시 과목 순서 재배치 실행
+  handlePaletteCardDrop(e, targetSubject) {
+    const card = e.currentTarget;
+    if (card) {
+      card.classList.remove('palette-drop-top', 'palette-drop-bottom');
+    }
+
+    if (!this.isDraggingPalette || !this.dragData || this.dragData.type !== 'palette-subject') return;
+    const sourceSubject = this.dragData.subjectName;
+    if (!sourceSubject || sourceSubject === targetSubject) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = card.getBoundingClientRect();
+    const isTop = (e.clientY - rect.top) < (rect.height / 2);
+
+    this.reorderPaletteSubject(sourceSubject, targetSubject, isTop);
+  }
+
+  // 과목 팔레트 순서 변경 코어 메서드
+  reorderPaletteSubject(sourceSubject, targetSubject, insertBefore) {
+    if (!this.offeredSubjects || !this.offeredSubjects.includes(sourceSubject) || !this.offeredSubjects.includes(targetSubject)) return;
+
+    this.pushUndoSnapshot(`과목 팔레트 순서 변경 ('${sourceSubject}')`);
+
+    const list = this.offeredSubjects.filter(s => s !== sourceSubject);
+    const targetIdx = list.indexOf(targetSubject);
+    if (targetIdx === -1) return;
+
+    const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+    list.splice(insertIdx, 0, sourceSubject);
+
+    this.offeredSubjects = list;
+    this.sortOfferedSubjects(false);
+    this.saveActiveYearSemesterData();
+    this.saveState();
+    this.renderStep2Palette();
+    this.showToast(`'${sourceSubject}' 과목의 순서가 변경되었습니다.`, true);
   }
 
   // 과목 팔레트 선택 시 오른쪽 시간표 하이라이트 토글
@@ -4315,6 +4517,7 @@ class TimetableApp {
     }, 120);
     if (e.currentTarget) e.currentTarget.classList.remove('is-dragging');
     document.querySelectorAll('.timetable-cell.drag-over').forEach(c => c.classList.remove('drag-over'));
+    document.querySelectorAll('.draggable-palette-subject').forEach(c => c.classList.remove('palette-drop-top', 'palette-drop-bottom'));
   }
 
   // ==========================================

@@ -39,7 +39,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="css/styles.css?v=20261019_07">
+  <link rel="stylesheet" href="css/styles.css?v=20261030_01">
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-800">
 
@@ -586,10 +586,18 @@
               <i data-lucide="palette" class="w-4 h-4 text-blue-600"></i>
               <h2 class="text-sm font-bold text-slate-900">과목 팔레트 (드래그)</h2>
             </div>
-            <span id="step2-subject-count-badge" class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold">0개</span>
+            <div class="flex items-center gap-1.5">
+              <button type="button" 
+                      onclick="window.app.sortOfferedSubjectsAlphabetically()" 
+                      class="px-2 py-0.5 rounded text-[10px] font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition shadow-2xs cursor-pointer"
+                      title="과목을 가나다순으로 자동 정렬 (제외 과목은 하단 유지)">
+                가나다 정렬
+              </button>
+              <span id="step2-subject-count-badge" class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold">0개</span>
+            </div>
           </div>
           <p class="text-[11px] text-slate-500">
-            과목 카드를 시간표 셀로 <strong>드래그</strong>하여 넣으세요. 편제된 학생 정보가 함께 따라옵니다.
+            카드를 <strong>위아래로 드래그</strong>하여 순서를 변경하거나, 시간표 셀로 드래그하여 배치하세요.
           </p>
         </div>
 
@@ -1629,7 +1637,7 @@
   <script src="js/file-storage-service.js?v=20261019_10"></script>
   <script src="js/excel-service.js?v=20261019_10"></script>
   <script src="js/cloud-sync.js?v=20261019_10"></script>
-  <script src="js/app.js?v=20261019_10"></script>
+  <script src="js/app.js?v=20261030_01"></script>
   <script>
     lucide.createIcons();
 

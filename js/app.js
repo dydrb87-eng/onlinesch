@@ -33,6 +33,7 @@ class TimetableApp {
     this.masterStudents = []; // [{ id, grade, classNum, studentNum, studentCode, name }]
     this.courseEnrollments = {}; // { [subjectName]: [studentId, ...] }
     this.courseSchedules = {}; // { [subjectName]: [{ id, day, periodId, status }, ...] }
+    this.excludedSchedulesBackup = {}; // 제외 처리 시 기존 시간표 배치 임시 보관
     this.students = []; // flat assignments array for timetable & ExcelService
     this.offeredSubjects = [];
     this.subjectColorMap = {};
@@ -234,6 +235,7 @@ class TimetableApp {
     this.masterStudents = d.masterStudents || [];
     this.courseEnrollments = d.courseEnrollments || {};
     this.courseStatus = d.courseStatus || {};
+    this.excludedSchedulesBackup = d.excludedSchedulesBackup || {};
     this.offeredSubjects = d.offeredSubjects || [];
     this.sortOfferedSubjects();
     this.subjectColorMap = d.subjectColorMap;
@@ -304,6 +306,7 @@ class TimetableApp {
       courseEnrollments: this.courseEnrollments,
       courseSchedules: this.courseSchedules,
       courseStatus: this.courseStatus || {},
+      excludedSchedulesBackup: this.excludedSchedulesBackup || {},
       students: this.students,
       offeredSubjects: this.offeredSubjects,
       subjectColorMap: this.subjectColorMap,
@@ -706,7 +709,7 @@ class TimetableApp {
     return Boolean(this.courseStatus && this.courseStatus[subjectName] === 'excluded');
   }
 
-  // 과목 제외 처리 / 제외 해제 토글
+  // 과목 제외 처리 / 제외 해제 토글 (종합 시간표 실시간 연동)
   toggleExcludeSubject(subjectName) {
     if (!this.courseStatus) this.courseStatus = {};
     const isExcluded = this.isSubjectExcluded(subjectName);
@@ -719,19 +722,51 @@ class TimetableApp {
       const activeSubs = this.offeredSubjects.filter(s => s !== subjectName && !this.isSubjectExcluded(s));
       const excludedSubs = this.offeredSubjects.filter(s => s !== subjectName && this.isSubjectExcluded(s));
       this.offeredSubjects = [...activeSubs, subjectName, ...excludedSubs];
-      this.showToast(`'${subjectName}' 과목의 제외 처리가 해제되어 일반 과목으로 복구되었습니다.`, true);
+
+      // 이전에 보관해 둔 시간표 배치가 있다면 복구
+      let restoredCount = 0;
+      if (this.excludedSchedulesBackup && this.excludedSchedulesBackup[subjectName] && this.excludedSchedulesBackup[subjectName].length > 0) {
+        this.courseSchedules[subjectName] = JSON.parse(JSON.stringify(this.excludedSchedulesBackup[subjectName]));
+        restoredCount = this.courseSchedules[subjectName].length;
+        delete this.excludedSchedulesBackup[subjectName];
+      }
+
+      if (restoredCount > 0) {
+        this.showToast(`'${subjectName}' 과목의 제외가 해제되어 일반 과목으로 복구되었으며, 기존 시간표 배치(${restoredCount}시간)도 다시 복원되었습니다.`, true);
+      } else {
+        this.showToast(`'${subjectName}' 과목의 제외 처리가 해제되어 일반 과목으로 복구되었습니다.`, true);
+      }
     } else {
       this.courseStatus[subjectName] = 'excluded';
       // 제외된 과목은 목록 가장 하단으로 이동
       const others = this.offeredSubjects.filter(s => s !== subjectName);
       this.offeredSubjects = [...others, subjectName];
-      this.showToast(`'${subjectName}' 과목이 제외 처리되어 목록 가장 하단으로 이동했습니다.`, true);
+
+      // 오른쪽 종합 시간표에서 배치 즉시 제거 (기존 배치는 임시 백업하여 복구 시 복원 가능)
+      if (!this.excludedSchedulesBackup) this.excludedSchedulesBackup = {};
+      const currentScheds = this.courseSchedules[subjectName] || [];
+      const scheduledHours = currentScheds.length;
+      if (scheduledHours > 0) {
+        this.excludedSchedulesBackup[subjectName] = JSON.parse(JSON.stringify(currentScheds));
+      }
+      this.courseSchedules[subjectName] = [];
+
+      // 강조(하이라이트) 중이었다면 해제
+      if (this.highlightedSubject === subjectName) {
+        this.highlightedSubject = null;
+      }
+
+      if (scheduledHours > 0) {
+        this.showToast(`'${subjectName}' 과목이 제외 처리되어 종합 시간표(${scheduledHours}시간)에서 제거되고 목록 가장 하단으로 이동했습니다.`, true);
+      } else {
+        this.showToast(`'${subjectName}' 과목이 제외 처리되어 목록 가장 하단으로 이동했습니다.`, true);
+      }
     }
 
+    this.rebuildStudentAssignments();
     this.saveActiveYearSemesterData();
     this.saveState();
-    this.renderStep2Palette();
-    this.renderSubjectBuckets();
+    this.render();
   }
 
   comparePeriods(a, b) {
@@ -4376,15 +4411,17 @@ class TimetableApp {
 
         <div class="flex items-center justify-between text-[11px] text-slate-600 pointer-events-none pt-0.5 border-t border-black/5">
           <span>
-            ${schedules.length > 0 ? `
+            ${isExcluded ? `
+              <span class="text-rose-500 font-medium text-[10px]">시간표에서 제거됨</span>
+            ` : (schedules.length > 0 ? `
               <strong class="text-indigo-700 font-bold">${schedules.length}시간</strong> 배치됨
             ` : `
               <span class="text-amber-600 font-semibold">미배치</span>
-            ` }
+            `)}
           </span>
           <span class="text-[10px] text-slate-500 font-medium flex items-center gap-1">
             ${isExcluded ? `
-              <span class="text-slate-400 font-normal">시간표 편성 제외 상태</span>
+              <span class="text-slate-400 font-normal">[복구] 시 시간표 재배치 가능</span>
             ` : `
               <span class="text-slate-400">순서 이동(↕) / 시간표 배치(&rarr;)</span>
             `}
@@ -4589,6 +4626,7 @@ class TimetableApp {
           const scheduledEntries = [];
           Object.entries(this.courseSchedules).forEach(([subject, schedules]) => {
             if (!this.isSubjectMatchingGradeFilter(subject)) return;
+            if (this.isSubjectExcluded(subject)) return; // 제외 처리된 과목은 종합 시간표에 일체 표시하지 않음
             schedules.forEach(sch => {
               if (sch.day === day.id && (sch.periodId === period.id || (!sch.periodId && sch.period === period.period))) {
                 scheduledEntries.push({
@@ -4826,6 +4864,11 @@ class TimetableApp {
 
     // 1. 좌측 과목 팔레트에서 새 과목을 끌고 온 경우 (신규 배치)
     if (data.type === 'palette-subject') {
+      if (this.isSubjectExcluded(data.subjectName)) {
+        this.showToast(`'${data.subjectName}' 과목은 제외 처리된 상태입니다. [복구] 버튼을 누른 후 시간표에 배치해 주세요.`, false);
+        this.dragData = null;
+        return;
+      }
       const added = this.addCourseSchedule(data.subjectName, targetDay, targetPeriodId, 'confirmed');
       if (added) {
         const studentCount = (this.courseEnrollments[data.subjectName] || []).length;

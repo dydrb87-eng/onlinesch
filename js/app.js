@@ -55,6 +55,8 @@ class TimetableApp {
     this.redoStack = []; // 다시 실행(재실행) 스냅샷 스택
     this.maxUndoDepth = 15;
     this.highlightedSubject = null; // 과목 팔레트에서 선택하여 시간표에 하이라이트할 과목명
+    this.jsonUpdatedTime = null; // 최근 불러오거나 저장한 JSON 파일의 일시
+    this.jsonFileName = null; // 최근 불러오거나 저장한 JSON 파일명
 
     this.init();
   }
@@ -426,6 +428,8 @@ class TimetableApp {
 
         this.activeYear = data.activeYear || '2027';
         this.activeSemester = data.activeSemester || '1';
+        this.jsonUpdatedTime = data.jsonUpdatedTime || null;
+        this.jsonFileName = data.jsonFileName || null;
 
         this.ensureYearSemesterData('2027', '1');
         this.ensureYearSemesterData('2027', '2');
@@ -474,6 +478,8 @@ class TimetableApp {
         showWeekends: this.showWeekends,
         timetableTabs: this.timetableTabs,
         activeTimetableTabId: this.activeTimetableTabId,
+        jsonUpdatedTime: this.jsonUpdatedTime,
+        jsonFileName: this.jsonFileName,
         lastUpdated: new Date().toISOString()
       };
       localStorage.setItem(this.storageKey, JSON.stringify(data));
@@ -1805,6 +1811,42 @@ class TimetableApp {
   }
 
   // ==========================================
+  // [타이틀 옆 JSON 파일 날짜·시간 버전 표시]
+  // ==========================================
+  formatJsonDateTime(isoOrDateStr) {
+    if (!isoOrDateStr) return '';
+    const d = new Date(isoOrDateStr);
+    if (isNaN(d.getTime())) return String(isoOrDateStr);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}.${mm}.${dd} ${hh}:${min}:${ss}`;
+  }
+
+  updateTitleJsonVersionUI() {
+    const el = document.getElementById('title-json-timestamp');
+    if (!el) return;
+
+    if (this.jsonUpdatedTime) {
+      const formatted = this.formatJsonDateTime(this.jsonUpdatedTime);
+      el.textContent = `(${formatted})`;
+      el.className = 'text-indigo-600 font-bold text-[11px] bg-indigo-50/90 px-2 py-0.5 rounded-md border border-indigo-200 shadow-2xs tracking-tight';
+      if (this.jsonFileName) {
+        el.title = `최근 JSON 파일: ${this.jsonFileName} (${formatted})`;
+      } else {
+        el.title = `JSON 업데이트 일시: ${formatted}`;
+      }
+    } else {
+      el.textContent = '(JSON 미불러옴)';
+      el.className = 'text-slate-400 font-normal text-[11px] bg-slate-100/70 px-1.5 py-0.5 rounded border border-slate-200';
+      el.title = '아직 불러온 JSON 파일이 없습니다. [JSON 불러오기]를 통해 데이터를 로드하세요.';
+    }
+  }
+
+  // ==========================================
   // [JSON 파일 관리 시스템: 내보내기(저장) & 불러오기]
   // ==========================================
   async exportJsonFile() {
@@ -1844,6 +1886,9 @@ class TimetableApp {
       const timeStamp = `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
 
       const fileName = `강원온라인학교 수강신청 현황 및 시간표_${timeStamp}.json`;
+      this.jsonUpdatedTime = now.toISOString();
+      this.jsonFileName = fileName;
+      this.updateTitleJsonVersionUI();
       const jsonStr = JSON.stringify(exportData, null, 2);
 
       if (window.FileStorageService && typeof window.FileStorageService.saveFile === 'function') {
@@ -1920,8 +1965,20 @@ class TimetableApp {
         // 현재 상태를 실행 취소(되돌리기) 스택에 보존
         this.pushUndoSnapshot('JSON 데이터 불러오기 전 상태');
 
+        // JSON 파일의 일시 파싱 (파일 내부 lastUpdated / exportedAt 또는 파일 자체 수정 시각)
+        let fileTime = parsed.lastUpdated || parsed.exportedAt;
+        if (!fileTime && file.lastModified) {
+          fileTime = new Date(file.lastModified).toISOString();
+        }
+        if (!fileTime) {
+          fileTime = new Date().toISOString();
+        }
+        this.jsonUpdatedTime = fileTime;
+        this.jsonFileName = file.name;
+
         // 데이터 적용
         this.applyExternalData(parsed, `[${file.name}] JSON 파일에서 시간표 데이터를 성공적으로 불러왔습니다.`);
+        this.updateTitleJsonVersionUI();
       } catch (err) {
         console.error('Failed to parse imported JSON:', err);
         alert('JSON 파일 파싱 오류: 올바른 JSON 파일인지 확인해주세요.\n' + err.message);
@@ -2001,6 +2058,7 @@ class TimetableApp {
     this.renderTimetableVersionTabs();
     this.renderStep2Palette();
     this.renderTimetable();
+    this.updateTitleJsonVersionUI();
 
     if (window.lucide) window.lucide.createIcons();
   }

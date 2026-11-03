@@ -15,7 +15,7 @@
 
 class TimetableApp {
   constructor() {
-    this.storageKey = 'gw_online_school_timetable_data_v6';
+    this.storageKey = 'gw_online_school_timetable_data_v7';
     this.activeYear = '2027'; // 기본 활성 학년도: 2027학년도
     this.activeSemester = '1'; // 기본 활성 학기: 1학기 ('1' | '2')
     this.academicYears = ['2027', '2026'];
@@ -47,7 +47,7 @@ class TimetableApp {
       enroll: 'all'
     };
     this.studentSortKey = 'code'; // 'code' | 'name' | 'subject'
-    this.excelPoolStorageKey = 'gw_excel_student_pool_directory_v1';
+    this.excelPoolStorageKey = 'gw_excel_student_pool_directory_v2';
     this.excelStudentPool = []; // 업로드된 전체 학생 명부 풀 (검색 및 선택 등록용)
     this.isCtrlPressed = false;
     this.dragData = null; // { type, studentId, studentIds, subjectName, fromDay, fromPeriodId }
@@ -60,9 +60,14 @@ class TimetableApp {
   }
 
   async init() {
-    this.loadState();
+    // 이전 버전(v6 이하)에 남아있던 테스트 학생 데이터 및 학생풀 캐시를 깨끗하게 정리
+    try {
+      localStorage.removeItem('gw_online_school_timetable_data_v6');
+      localStorage.removeItem('gw_online_school_timetable_data_v5');
+      localStorage.removeItem('gw_excel_student_pool_directory_v1');
+    } catch (e) {}
 
-    // 로컬 스토리지에 시간표 데이터가 전혀 없는 최초 접속 시에만 data/timetable-db.json 기본 서식 로드
+    // 로컬 스토리지에 시간표 데이터가 전혀 없는 최초 접속 시 data/timetable-db.json 기본 순수 서식 로드
     if (!localStorage.getItem(this.storageKey)) {
       try {
         const res = await fetch('data/timetable-db.json?t=' + Date.now());
@@ -77,6 +82,7 @@ class TimetableApp {
       }
     }
 
+    this.loadState();
     this.loadExcelStudentPool();
     this.sortPeriods();
     this.sortOfferedSubjects();

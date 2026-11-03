@@ -44,7 +44,7 @@ function ensureDbFile() {
     fs.writeFileSync(DB_FILE, JSON.stringify({
       periods: DEFAULT_PERIODS,
       students: [],
-      offeredSubjects: ['인공지능', '빅데이터 분석', '프로그래밍'],
+      offeredSubjects: [],
       subjectColorMap: {},
       showWeekends: true,
       lastUpdated: new Date().toISOString()

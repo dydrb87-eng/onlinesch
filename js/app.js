@@ -685,27 +685,36 @@ class TimetableApp {
     }
     this.offeredSubjects = Array.from(new Set(this.offeredSubjects.filter(Boolean)));
 
+    const getStatusPriority = (sub) => {
+      const status = this.getSubjectStatus(sub);
+      if (status === 'closed' || status === 'excluded' || this.isSubjectExcluded(sub)) return 3; // 3. 제외/폐강
+      if (status === 'adjust') return 2; // 2. 조정
+      return 1; // 1. 개설 (open)
+    };
+
     if (forceAlphabetical) {
       this.offeredSubjects.sort((a, b) => {
-        const aEx = this.isSubjectExcluded(a);
-        const bEx = this.isSubjectExcluded(b);
-        if (aEx !== bEx) return aEx ? 1 : -1;
+        const pA = getStatusPriority(a);
+        const pB = getStatusPriority(b);
+        if (pA !== pB) return pA - pB;
         return (a || '').localeCompare(b || '', 'ko');
       });
       return;
     }
 
-    // 기본: 사용자 지정 순서를 보존하되, 제외(excluded)된 과목은 항상 가장 하단으로 안정적 배치
-    const active = [];
-    const excluded = [];
+    // 기본: 개설(1) -> 조정(2) -> 제외/폐강(3) 순서 보존 정렬
+    const openSubs = [];
+    const adjustSubs = [];
+    const excludedSubs = [];
+
     this.offeredSubjects.forEach(sub => {
-      if (this.isSubjectExcluded(sub)) {
-        excluded.push(sub);
-      } else {
-        active.push(sub);
-      }
+      const p = getStatusPriority(sub);
+      if (p === 1) openSubs.push(sub);
+      else if (p === 2) adjustSubs.push(sub);
+      else excludedSubs.push(sub);
     });
-    this.offeredSubjects = [...active, ...excluded];
+
+    this.offeredSubjects = [...openSubs, ...adjustSubs, ...excludedSubs];
   }
 
   // 가나다순 수동 정렬
@@ -3819,13 +3828,50 @@ class TimetableApp {
     const container = document.getElementById('subject-buckets-container');
     const sideListContainer = document.getElementById('side-subject-list-container');
     const sideCountBadge = document.getElementById('side-subject-count-badge');
+    const step1NavContainer = document.getElementById('step1-subject-nav');
 
-    // 활성 과목(open, adjust)과 제외/폐강 과목(closed, excluded) 분리
-    const activeSubs = this.offeredSubjects.filter(s => !this.isSubjectExcluded(s));
+    // 3분할: 개설 과목 / 조정 과목 / 제외·폐강 과목
+    const openSubs = this.offeredSubjects.filter(s => {
+      const st = this.getSubjectStatus(s);
+      return st === 'open' && !this.isSubjectExcluded(s);
+    });
+    const adjustSubs = this.offeredSubjects.filter(s => {
+      const st = this.getSubjectStatus(s);
+      return st === 'adjust' && !this.isSubjectExcluded(s);
+    });
     const excludedSubs = this.offeredSubjects.filter(s => this.isSubjectExcluded(s));
 
     if (sideCountBadge) {
       sideCountBadge.textContent = `${this.offeredSubjects.length}개`;
+    }
+
+    // 1단계 상단 점프 네비게이션
+    if (step1NavContainer) {
+      step1NavContainer.innerHTML = `
+        <button type="button" 
+                onclick="window.app.scrollToBucketSection('bucket-section-open')" 
+                class="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                title="개설 과목으로 이동">
+          <span>🟢 개설</span>
+          <span class="text-[9px] px-1 py-0.1 rounded-full bg-emerald-200 text-emerald-900 font-extrabold">${openSubs.length}</span>
+        </button>
+
+        <button type="button" 
+                onclick="window.app.scrollToBucketSection('bucket-section-adjust')" 
+                class="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                title="조정 과목으로 이동">
+          <span>🟡 조정</span>
+          <span class="text-[9px] px-1 py-0.1 rounded-full bg-amber-200 text-amber-900 font-extrabold">${adjustSubs.length}</span>
+        </button>
+
+        <button type="button" 
+                onclick="window.app.scrollToBucketSection('bucket-section-excluded')" 
+                class="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                title="제외/폐강 과목으로 이동">
+          <span>🚫 제외/폐강</span>
+          <span class="text-[9px] px-1 py-0.1 rounded-full bg-slate-200 text-slate-800 font-extrabold">${excludedSubs.length}</span>
+        </button>
+      `;
     }
 
     // ==========================================
@@ -3835,7 +3881,7 @@ class TimetableApp {
       if (this.offeredSubjects.length === 0) {
         sideListContainer.innerHTML = `
           <div class="py-6 text-center text-slate-400 text-xs italic">
-            개설된 과목이 없습니다.
+            등록된 과목이 없습니다.
           </div>
         `;
       } else {
@@ -3875,7 +3921,6 @@ class TimetableApp {
 
           let actionButtons = '';
           if (isExcludedGroup) {
-            // 제외/폐강 그룹: 복구 버튼
             actionButtons = `
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs ${status === 'closed' ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-200 text-slate-700 border border-slate-300'}">
                 ${status === 'closed' ? '폐강' : '제외'}
@@ -3889,18 +3934,17 @@ class TimetableApp {
               </button>
             `;
           } else {
-            // 활성 그룹: 상태 순환 배지 + 제외 버튼
             actionButtons = `
               <button type="button" 
                       onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent('${safeSub}'))"
-                      class="px-1.5 py-0.5 text-[10px] font-black rounded border transition-all shadow-2xs flex items-center gap-0.5 ${statusBadgeClass}"
-                      title="클릭하여 상태 전환 (개설 ➔ 조정 ➔ 폐강)">
+                      class="px-1.5 py-0.5 text-[10px] font-black rounded border transition-all shadow-2xs flex items-center gap-0.5 cursor-pointer ${statusBadgeClass}"
+                      title="클릭하여 상태 전환 (🟢 개설 ➔ 🟡 조정 ➔ 🔴 폐강)">
                 <span class="text-[9px]">${statusSymbol}</span>
                 <span>${statusLabel}</span>
               </button>
               <button type="button" 
                       onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))"
-                      class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition" 
+                      class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer" 
                       title="이 과목을 제외 처리하여 하단 목록으로 이동">
                 <i data-lucide="ban" class="w-3 h-3"></i>
               </button>
@@ -3943,22 +3987,50 @@ class TimetableApp {
         };
 
         let sideHtml = '';
-        if (activeSubs.length > 0) {
-          sideHtml += activeSubs.map(s => renderSideItem(s, false)).join('');
+
+        // 1. 개설 섹션
+        sideHtml += `
+          <div id="side-bucket-section-open" class="pt-1.5 pb-1 px-1 flex items-center justify-between text-[11px] font-bold text-emerald-800">
+            <span class="flex items-center gap-1">
+              <span>🟢</span>
+              <span>개설 과목 (${openSubs.length})</span>
+            </span>
+          </div>
+        `;
+        if (openSubs.length > 0) {
+          sideHtml += openSubs.map(s => renderSideItem(s, false)).join('');
         } else {
-          sideHtml += `<div class="py-3 text-center text-slate-400 text-xs italic">활성 과목이 없습니다.</div>`;
+          sideHtml += `<div class="py-1.5 text-center text-slate-400 text-[11px] italic">개설 과목 없음</div>`;
         }
 
+        // 2. 조정 섹션
+        sideHtml += `
+          <div id="side-bucket-section-adjust" class="pt-2.5 pb-1 px-1 border-t border-dashed border-slate-200 mt-2 flex items-center justify-between text-[11px] font-bold text-amber-800">
+            <span class="flex items-center gap-1">
+              <span>🟡</span>
+              <span>조정 과목 (${adjustSubs.length})</span>
+            </span>
+          </div>
+        `;
+        if (adjustSubs.length > 0) {
+          sideHtml += adjustSubs.map(s => renderSideItem(s, false)).join('');
+        } else {
+          sideHtml += `<div class="py-1.5 text-center text-slate-400 text-[11px] italic">조정 과목 없음</div>`;
+        }
+
+        // 3. 제외/폐강 섹션
+        sideHtml += `
+          <div id="side-bucket-section-excluded" class="pt-2.5 pb-1 px-1 border-t border-dashed border-slate-300 mt-2 flex items-center justify-between text-[11px] font-bold text-slate-600">
+            <span class="flex items-center gap-1">
+              <i data-lucide="ban" class="w-3 h-3 text-rose-500"></i>
+              <span>제외 / 폐강 과목 (${excludedSubs.length})</span>
+            </span>
+          </div>
+        `;
         if (excludedSubs.length > 0) {
-          sideHtml += `
-            <div class="pt-3 pb-1 px-1 border-t border-dashed border-slate-300 mt-2 flex items-center justify-between text-[11px] font-bold text-slate-500">
-              <span class="flex items-center gap-1">
-                <i data-lucide="ban" class="w-3 h-3 text-rose-500"></i>
-                <span>제외 / 폐강 목록 (${excludedSubs.length})</span>
-              </span>
-            </div>
-          `;
           sideHtml += excludedSubs.map(s => renderSideItem(s, true)).join('');
+        } else {
+          sideHtml += `<div class="py-1.5 text-center text-slate-400 text-[11px] italic">제외/폐강 과목 없음</div>`;
         }
 
         sideListContainer.innerHTML = sideHtml;
@@ -4213,41 +4285,103 @@ class TimetableApp {
     };
 
     let bodyHtml = '';
-    if (activeSubs.length > 0) {
-      bodyHtml += activeSubs.map(s => renderBucketCard(s, false)).join('');
-    } else {
-      bodyHtml += `
-        <div class="py-10 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white mb-6">
-          <p class="font-bold text-sm text-slate-600">활성화된 과목이 없습니다.</p>
-          <p class="text-xs text-slate-400 mt-1">모든 과목이 제외/폐강되었거나 아직 등록되지 않았습니다.</p>
+
+    // 1. 개설 과목 섹션 헤더 & 버킷
+    bodyHtml += `
+      <div id="bucket-section-open" class="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-between text-emerald-950 shadow-2xs">
+        <div class="flex items-center gap-2">
+          <span class="p-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold shrink-0">🟢</span>
+          <div>
+            <div class="font-extrabold text-sm flex items-center gap-2">
+              <span>개설 과목 목록</span>
+              <span class="px-2 py-0.5 text-xs rounded-full bg-emerald-200 text-emerald-900 font-black">${openSubs.length}개</span>
+            </div>
+            <div class="text-[11px] text-emerald-700">정상 개설되어 시간표 배정 및 수강생 편제가 활성화된 과목입니다.</div>
+          </div>
         </div>
-      `;
+      </div>
+    `;
+    if (openSubs.length > 0) {
+      bodyHtml += openSubs.map(s => renderBucketCard(s, false)).join('');
+    } else {
+      bodyHtml += `<div class="py-6 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white mb-6 text-xs">개설된 과목이 없습니다.</div>`;
     }
 
-    if (excludedSubs.length > 0) {
-      bodyHtml += `
-        <div class="mt-8 mb-4 p-4 rounded-2xl bg-slate-100/90 border border-slate-300 flex items-center justify-between text-slate-700 shadow-2xs">
-          <div class="flex items-center gap-2.5">
-            <span class="p-2 rounded-xl bg-rose-100 text-rose-700 font-bold shrink-0">
-              <i data-lucide="ban" class="w-5 h-5"></i>
-            </span>
-            <div>
-              <div class="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-                <span>🚫 제외 및 폐강 과목 목록</span>
-                <span class="px-2 py-0.5 text-xs rounded-full bg-slate-200 text-slate-700 font-bold">${excludedSubs.length}개</span>
-              </div>
-              <div class="text-xs text-slate-500 mt-0.5">
-                이 목록의 과목은 종합 시간표 편성에서 제외됩니다. '복구' 버튼을 누르면 즉시 상단 활성 목록으로 복귀합니다.
-              </div>
+    // 2. 조정 과목 섹션 헤더 & 버킷
+    bodyHtml += `
+      <div id="bucket-section-adjust" class="mt-8 mb-4 p-3 rounded-2xl bg-amber-50 border border-amber-300 flex items-center justify-between text-amber-950 shadow-2xs">
+        <div class="flex items-center gap-2">
+          <span class="p-1.5 rounded-xl bg-amber-100 text-amber-800 font-bold shrink-0">🟡</span>
+          <div>
+            <div class="font-extrabold text-sm flex items-center gap-2">
+              <span>조정 과목 목록</span>
+              <span class="px-2 py-0.5 text-xs rounded-full bg-amber-200 text-amber-900 font-black">${adjustSubs.length}개</span>
+            </div>
+            <div class="text-[11px] text-amber-700">인원 미달 또는 편성 검토 등으로 조정 중인 과목입니다.</div>
+          </div>
+        </div>
+      </div>
+    `;
+    if (adjustSubs.length > 0) {
+      bodyHtml += adjustSubs.map(s => renderBucketCard(s, false)).join('');
+    } else {
+      bodyHtml += `<div class="py-6 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white mb-6 text-xs">조정 상태인 과목이 없습니다.</div>`;
+    }
+
+    // 3. 제외 / 폐강 과목 섹션 헤더 & 버킷
+    bodyHtml += `
+      <div id="bucket-section-excluded" class="mt-8 mb-4 p-3.5 rounded-2xl bg-slate-100 border border-slate-300 flex items-center justify-between text-slate-700 shadow-2xs">
+        <div class="flex items-center gap-2.5">
+          <span class="p-2 rounded-xl bg-rose-100 text-rose-700 font-bold shrink-0">
+            <i data-lucide="ban" class="w-4 h-4"></i>
+          </span>
+          <div>
+            <div class="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+              <span>🚫 제외 및 폐강 과목 목록</span>
+              <span class="px-2 py-0.5 text-xs rounded-full bg-slate-200 text-slate-700 font-bold">${excludedSubs.length}개</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-0.5">
+              이 목록의 과목은 종합 시간표 편성에서 제외됩니다. '복구' 버튼을 누르면 즉시 개설 목록으로 복귀합니다.
             </div>
           </div>
         </div>
-      `;
+      </div>
+    `;
+    if (excludedSubs.length > 0) {
       bodyHtml += excludedSubs.map(s => renderBucketCard(s, true)).join('');
+    } else {
+      bodyHtml += `<div class="py-6 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white mb-6 text-xs">제외 또는 폐강된 과목이 없습니다.</div>`;
     }
 
     container.innerHTML = bodyHtml;
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // ==========================================
+  // 과목 목록 3분할 스크롤 점프 네비게이션
+  // ==========================================
+  scrollToPaletteSection(sectionId) {
+    const el = document.getElementById(sectionId);
+    const container = document.getElementById('palette-subject-list');
+    if (el && container) {
+      const offsetTop = el.offsetTop - container.offsetTop;
+      container.scrollTo({ top: Math.max(0, offsetTop - 6), behavior: 'smooth' });
+    }
+  }
+
+  scrollToBucketSection(sectionId) {
+    const el = document.getElementById(sectionId);
+    const container = document.getElementById('subject-buckets-container');
+    if (el && container) {
+      const offsetTop = el.offsetTop - container.offsetTop;
+      container.scrollTo({ top: Math.max(0, offsetTop - 10), behavior: 'smooth' });
+    }
+    const sideEl = document.getElementById('side-' + sectionId);
+    const sideContainer = document.getElementById('side-subject-list-container');
+    if (sideEl && sideContainer) {
+      const sideOffset = sideEl.offsetTop - sideContainer.offsetTop;
+      sideContainer.scrollTo({ top: Math.max(0, sideOffset - 6), behavior: 'smooth' });
+    }
   }
 
   scrollToBucket(subjectName) {
@@ -4508,20 +4642,55 @@ class TimetableApp {
   renderStep2Palette() {
     const container = document.getElementById('palette-subject-list');
     const badge = document.getElementById('step2-subject-count-badge');
+    const navContainer = document.getElementById('step2-palette-nav');
     if (!container) return;
 
     this.sortOfferedSubjects(false);
 
     const filteredSubjects = this.offeredSubjects.filter(sub => this.isSubjectMatchingGradeFilter(sub));
-    const activeSubjects = filteredSubjects.filter(sub => !this.isSubjectExcluded(sub));
-    const excludedSubjects = filteredSubjects.filter(sub => this.isSubjectExcluded(sub));
+    
+    // 3분할: 개설 과목 / 조정 과목 / 제외·폐강 과목
+    const openSubs = filteredSubjects.filter(sub => {
+      const st = this.getSubjectStatus(sub);
+      return st === 'open' && !this.isSubjectExcluded(sub);
+    });
+    const adjustSubs = filteredSubjects.filter(sub => {
+      const st = this.getSubjectStatus(sub);
+      return st === 'adjust' && !this.isSubjectExcluded(sub);
+    });
+    const excludedSubs = filteredSubjects.filter(sub => this.isSubjectExcluded(sub));
 
     if (badge) {
-      if (excludedSubjects.length > 0) {
-        badge.textContent = `${activeSubjects.length}개 (제외·폐강 ${excludedSubjects.length})`;
-      } else {
-        badge.textContent = `${activeSubjects.length}개`;
-      }
+      badge.textContent = `${filteredSubjects.length}개`;
+    }
+
+    // [과목 목록 바로 아래]: 개설(N) / 조정(N) / 제외·폐강(N) 점프 네비게이션 버튼 렌더링
+    if (navContainer) {
+      navContainer.innerHTML = `
+        <button type="button" 
+                onclick="window.app.scrollToPaletteSection('palette-section-open')" 
+                class="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                title="개설 과목 목록으로 스크롤 이동">
+          <span>🟢 개설과목</span>
+          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200 text-emerald-900 font-extrabold">${openSubs.length}</span>
+        </button>
+
+        <button type="button" 
+                onclick="window.app.scrollToPaletteSection('palette-section-adjust')" 
+                class="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                title="조정 과목 목록으로 스크롤 이동">
+          <span>🟡 조정과목</span>
+          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 font-extrabold">${adjustSubs.length}</span>
+        </button>
+
+        <button type="button" 
+                onclick="window.app.scrollToPaletteSection('palette-section-excluded')" 
+                class="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition shadow-2xs cursor-pointer flex items-center gap-1"
+                title="제외/폐강 과목 목록으로 스크롤 이동">
+          <span>🚫 제외/폐강과목</span>
+          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 font-extrabold">${excludedSubs.length}</span>
+        </button>
+      `;
     }
 
     if (filteredSubjects.length === 0) {
@@ -4536,32 +4705,65 @@ class TimetableApp {
 
     let html = '';
 
-    // 1. 활성 과목 목록 렌더링 (사용자 드래그 순서 유지)
-    activeSubjects.forEach(sub => {
-      html += this.renderPaletteSubjectCard(sub, false);
-    });
+    // 1. 개설 과목 섹션
+    html += `
+      <div id="palette-section-open" class="flex items-center justify-between text-xs font-extrabold text-emerald-900 bg-emerald-50/90 px-3 py-1.5 rounded-xl border border-emerald-200 shadow-2xs select-none sticky top-0 z-10 backdrop-blur-xs">
+        <span class="flex items-center gap-1.5">
+          <span>🟢</span>
+          <span>개설 과목 (${openSubs.length}개)</span>
+        </span>
+        <span class="text-[10px] text-emerald-700 font-semibold">정상 개설</span>
+      </div>
+    `;
+    if (openSubs.length > 0) {
+      openSubs.forEach(sub => {
+        html += this.renderPaletteSubjectCard(sub, false);
+      });
+    } else {
+      html += `<div class="py-3 text-center text-slate-400 text-xs italic bg-white/50 rounded-lg border border-dashed border-slate-200">개설된 과목이 없습니다.</div>`;
+    }
 
-    // 2. 제외/폐강 목록 렌더링 (목록 최하단 일괄 배치)
-    if (excludedSubjects.length > 0) {
-      html += `
-        <div class="pt-3 pb-1 border-t-2 border-slate-200 mt-4 mb-2 flex items-center justify-between text-xs font-bold text-slate-600 select-none">
-          <div class="flex items-center gap-1.5">
-            <i data-lucide="ban" class="w-3.5 h-3.5 text-rose-500"></i>
-            <span>제외/폐강 목록 (${excludedSubjects.length}개)</span>
-          </div>
-          <span class="text-[10px] text-slate-400 font-normal">시간표 편성 제외 상태</span>
+    // 2. 조정 과목 섹션
+    html += `
+      <div id="palette-section-adjust" class="flex items-center justify-between text-xs font-extrabold text-amber-900 bg-amber-50/90 px-3 py-1.5 rounded-xl border border-amber-200 shadow-2xs select-none sticky top-0 z-10 backdrop-blur-xs mt-3">
+        <span class="flex items-center gap-1.5">
+          <span>🟡</span>
+          <span>조정 과목 (${adjustSubs.length}개)</span>
+        </span>
+        <span class="text-[10px] text-amber-700 font-semibold">편성 조정 중</span>
+      </div>
+    `;
+    if (adjustSubs.length > 0) {
+      adjustSubs.forEach(sub => {
+        html += this.renderPaletteSubjectCard(sub, false);
+      });
+    } else {
+      html += `<div class="py-3 text-center text-slate-400 text-xs italic bg-white/50 rounded-lg border border-dashed border-slate-200">조정 상태인 과목이 없습니다.</div>`;
+    }
+
+    // 3. 제외 / 폐강 과목 섹션
+    html += `
+      <div id="palette-section-excluded" class="flex items-center justify-between text-xs font-extrabold text-slate-700 bg-slate-100/90 px-3 py-1.5 rounded-xl border border-slate-300 shadow-2xs select-none sticky top-0 z-10 backdrop-blur-xs mt-4">
+        <div class="flex items-center gap-1.5">
+          <i data-lucide="ban" class="w-3.5 h-3.5 text-rose-500"></i>
+          <span>제외 / 폐강 과목 (${excludedSubs.length}개)</span>
         </div>
-      `;
-      excludedSubjects.forEach(sub => {
+        <span class="text-[10px] text-slate-400 font-normal">시간표 편성 제외</span>
+      </div>
+    `;
+    if (excludedSubs.length > 0) {
+      excludedSubs.forEach(sub => {
         html += this.renderPaletteSubjectCard(sub, true);
       });
+    } else {
+      html += `<div class="py-3 text-center text-slate-400 text-xs italic bg-white/50 rounded-lg border border-dashed border-slate-200">제외 또는 폐강된 과목이 없습니다.</div>`;
     }
 
     container.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
   }
 
-  // 개별 과목 팔레트 카드 HTML 렌더러 (개설: 굵은 초록 테두리, 조정: 노란 테두리, 폐강: 빨간 테두리, 하단 제외/폐강 목록 일원화)
+    // 개별 과목 팔레트 카드 HTML 렌더러 (개설: 굵은 초록 테두리, 조정: 노란 테두리, 폐강: 빨간 테두리, 하단 제외/폐강 목록 일원화)
   renderPaletteSubjectCard(sub, isExcluded) {
     const color = this.getSubjectColor(sub);
     const studentIds = this.courseEnrollments[sub] || [];

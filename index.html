@@ -39,7 +39,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="css/styles.css?v=20261103_06">
+  <link rel="stylesheet" href="css/styles.css?v=20261103_07">
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-800">
 
@@ -563,6 +563,8 @@
             </p>
 
             <!-- 동적 과목 목록 컨테이너 -->
+            <!-- 1단계 3분할 바로가기 점프 네비게이션 -->
+            <div id="step1-subject-nav" class="flex items-center gap-1 mb-1.5 flex-wrap"></div>
             <div id="side-subject-list-container" class="flex flex-col gap-1.5 max-h-[calc(100vh-270px)] overflow-y-auto pr-0.5">
               <!-- JS 동적 생성: 과목명(인원) -->
             </div>
@@ -603,9 +605,8 @@
               <span id="step2-subject-count-badge" class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold">0개</span>
             </div>
           </div>
-          <p class="text-[11px] text-slate-500">
-            카드를 <strong>위아래로 드래그</strong>하여 순서를 변경하거나, 시간표 셀로 드래그하여 배치하세요.
-          </p>
+          <!-- 3분할 바로가기 점프 네비게이션 -->
+          <div id="step2-palette-nav" class="flex items-center gap-1.5 mt-2 flex-wrap"></div>
         </div>
 
         <!-- Ctrl 복사 모드 실시간 배너 -->
@@ -1644,7 +1645,7 @@
   <script src="js/file-storage-service.js?v=20261103_01"></script>
   <script src="js/excel-service.js?v=20261103_01"></script>
   <script src="js/cloud-sync.js?v=20261103_01"></script>
-  <script src="js/app.js?v=20261103_06"></script>
+  <script src="js/app.js?v=20261103_07"></script>
   <script>
     lucide.createIcons();
 

@@ -716,9 +716,11 @@ class TimetableApp {
     this.showToast('과목이 가나다순으로 정렬되었습니다. (제외 과목은 하단 배치)', true);
   }
 
-  // 과목 제외 상태 여부 확인
+  // 과목 제외 또는 폐강 상태 여부 확인 (하단 '제외/폐강 목록' 분류 대상)
   isSubjectExcluded(subjectName) {
-    return Boolean(this.courseStatus && this.courseStatus[subjectName] === 'excluded');
+    if (!this.courseStatus) this.courseStatus = {};
+    const status = this.courseStatus[subjectName];
+    return status === 'excluded' || status === 'closed';
   }
 
   // 과목 제외 처리 / 제외 해제 토글 (종합 시간표 실시간 연동)
@@ -726,11 +728,11 @@ class TimetableApp {
     if (!this.courseStatus) this.courseStatus = {};
     const isExcluded = this.isSubjectExcluded(subjectName);
 
-    this.pushUndoSnapshot(`'${subjectName}' 과목 ${isExcluded ? '제외 해제' : '제외 처리'}`);
+    this.pushUndoSnapshot(`'${subjectName}' 과목 ${isExcluded ? '복구 (개설 전환)' : '제외 처리'}`);
 
     if (isExcluded) {
       this.courseStatus[subjectName] = 'open';
-      // 제외 해제 시 활성 과목 맨 뒤(제외 과목들 바로 위)로 재배치
+      // 제외 해제 시 활성 과목 맨 뒤(제외·폐강 과목들 바로 위)로 재배치
       const activeSubs = this.offeredSubjects.filter(s => s !== subjectName && !this.isSubjectExcluded(s));
       const excludedSubs = this.offeredSubjects.filter(s => s !== subjectName && this.isSubjectExcluded(s));
       this.offeredSubjects = [...activeSubs, subjectName, ...excludedSubs];
@@ -744,9 +746,9 @@ class TimetableApp {
       }
 
       if (restoredCount > 0) {
-        this.showToast(`'${subjectName}' 과목의 제외가 해제되어 일반 과목으로 복구되었으며, 기존 시간표 배치(${restoredCount}시간)도 다시 복원되었습니다.`, true);
+        this.showToast(`'${subjectName}' 과목이 [개설] 상태로 복구되어 상단 과목 목록으로 이동했으며, 기존 시간표 배치(${restoredCount}시간)도 다시 복원되었습니다.`, true);
       } else {
-        this.showToast(`'${subjectName}' 과목의 제외 처리가 해제되어 일반 과목으로 복구되었습니다.`, true);
+        this.showToast(`'${subjectName}' 과목이 [개설] 상태로 복구되어 상단 과목 목록으로 이동했습니다.`, true);
       }
     } else {
       this.courseStatus[subjectName] = 'excluded';
@@ -769,9 +771,9 @@ class TimetableApp {
       }
 
       if (scheduledHours > 0) {
-        this.showToast(`'${subjectName}' 과목이 제외 처리되어 종합 시간표(${scheduledHours}시간)에서 제거되고 목록 가장 하단으로 이동했습니다.`, true);
+        this.showToast(`'${subjectName}' 과목이 제외 처리되어 종합 시간표(${scheduledHours}시간)에서 제거되고 하단 '제외/폐강 목록'으로 이동했습니다.`, true);
       } else {
-        this.showToast(`'${subjectName}' 과목이 제외 처리되어 목록 가장 하단으로 이동했습니다.`, true);
+        this.showToast(`'${subjectName}' 과목이 제외 처리되어 하단 '제외/폐강 목록'으로 이동했습니다.`, true);
       }
     }
 
@@ -3757,12 +3759,41 @@ class TimetableApp {
     this.pushUndoSnapshot(`'${subjectName}' 과목 상태 변경 (${prev} ➔ ${status})`);
     this.courseStatus[subjectName] = status;
 
-    // 시간표 슬롯(courseSchedules) 상태도 함께 동기화
-    if (this.courseSchedules && this.courseSchedules[subjectName]) {
-      const targetScheduleStatus = status === 'closed' ? 'canceled' : (status === 'adjust' ? 'adjust' : 'confirmed');
-      this.courseSchedules[subjectName].forEach(sch => {
-        sch.status = targetScheduleStatus;
-      });
+    if (status === 'closed') {
+      // 폐강 시: 목록 가장 하단(제외/폐강 목록)으로 이동
+      const others = this.offeredSubjects.filter(s => s !== subjectName);
+      this.offeredSubjects = [...others, subjectName];
+
+      // 오른쪽 종합 시간표에서 배치 즉시 제거 (임시 백업하여 복구 시 복원 가능)
+      if (!this.excludedSchedulesBackup) this.excludedSchedulesBackup = {};
+      const currentScheds = this.courseSchedules[subjectName] || [];
+      if (currentScheds.length > 0) {
+        this.excludedSchedulesBackup[subjectName] = JSON.parse(JSON.stringify(currentScheds));
+      }
+      this.courseSchedules[subjectName] = [];
+
+      if (this.highlightedSubject === subjectName) {
+        this.highlightedSubject = null;
+      }
+    } else {
+      // 개설 또는 조정 시: 하단 제외/폐강 목록에서 상단 활성 목록으로 복귀
+      const activeSubs = this.offeredSubjects.filter(s => s !== subjectName && !this.isSubjectExcluded(s));
+      const excludedSubs = this.offeredSubjects.filter(s => s !== subjectName && this.isSubjectExcluded(s));
+      this.offeredSubjects = [...activeSubs, subjectName, ...excludedSubs];
+
+      // 이전 시간표 백업이 있다면 복구
+      if (this.excludedSchedulesBackup && this.excludedSchedulesBackup[subjectName] && this.excludedSchedulesBackup[subjectName].length > 0) {
+        this.courseSchedules[subjectName] = JSON.parse(JSON.stringify(this.excludedSchedulesBackup[subjectName]));
+        delete this.excludedSchedulesBackup[subjectName];
+      }
+
+      // 시간표 슬롯 상태 동기화
+      if (this.courseSchedules && this.courseSchedules[subjectName]) {
+        const targetScheduleStatus = status === 'adjust' ? 'adjust' : 'confirmed';
+        this.courseSchedules[subjectName].forEach(sch => {
+          sch.status = targetScheduleStatus;
+        });
+      }
     }
 
     this.rebuildStudentAssignments();
@@ -3770,7 +3801,11 @@ class TimetableApp {
     this.saveState();
     this.render();
     const labels = { open: '개설', adjust: '조정', closed: '폐강' };
-    this.showToast(`'${subjectName}' 과목이 [${labels[status] || status}] 상태로 변경되었습니다.`, true);
+    if (status === 'closed') {
+      this.showToast(`'${subjectName}' 과목이 [폐강] 처리되어 하단 '제외/폐강 목록'으로 이동했습니다.`, true);
+    } else {
+      this.showToast(`'${subjectName}' 과목이 [${labels[status] || status}] 상태로 설정되어 상단 과목 목록으로 이동했습니다.`, true);
+    }
   }
 
   renderSubjectBuckets() {
@@ -4361,7 +4396,7 @@ class TimetableApp {
 
     if (badge) {
       if (excludedSubjects.length > 0) {
-        badge.textContent = `${activeSubjects.length}개 (제외 ${excludedSubjects.length})`;
+        badge.textContent = `${activeSubjects.length}개 (제외·폐강 ${excludedSubjects.length})`;
       } else {
         badge.textContent = `${activeSubjects.length}개`;
       }
@@ -4384,15 +4419,15 @@ class TimetableApp {
       html += this.renderPaletteSubjectCard(sub, false);
     });
 
-    // 2. 제외 처리된 과목 목록 렌더링 (목록 최하단 배치)
+    // 2. 제외/폐강 목록 렌더링 (목록 최하단 일괄 배치)
     if (excludedSubjects.length > 0) {
       html += `
-        <div class="pt-3 pb-1 border-t-2 border-slate-200 mt-4 mb-2 flex items-center justify-between text-xs font-bold text-slate-500 select-none">
+        <div class="pt-3 pb-1 border-t-2 border-slate-200 mt-4 mb-2 flex items-center justify-between text-xs font-bold text-slate-600 select-none">
           <div class="flex items-center gap-1.5">
-            <i data-lucide="ban" class="w-3.5 h-3.5 text-slate-400"></i>
-            <span>제외 처리된 과목 (${excludedSubjects.length}개)</span>
+            <i data-lucide="ban" class="w-3.5 h-3.5 text-rose-500"></i>
+            <span>제외/폐강 목록 (${excludedSubjects.length}개)</span>
           </div>
-          <span class="text-[10px] text-slate-400 font-normal">시간표 편성 보류</span>
+          <span class="text-[10px] text-slate-400 font-normal">시간표 편성 제외 상태</span>
         </div>
       `;
       excludedSubjects.forEach(sub => {
@@ -4404,7 +4439,7 @@ class TimetableApp {
     if (window.lucide) window.lucide.createIcons();
   }
 
-  // 개별 과목 팔레트 카드 HTML 렌더러 (개설: 굵은 초록 테두리, 조정: 노란 테두리, 폐강: 빨간 테두리 및 순환 설정 버튼)
+  // 개별 과목 팔레트 카드 HTML 렌더러 (개설: 굵은 초록 테두리, 조정: 노란 테두리, 폐강: 빨간 테두리, 하단 제외/폐강 목록 일원화)
   renderPaletteSubjectCard(sub, isExcluded) {
     const color = this.getSubjectColor(sub);
     const studentIds = this.courseEnrollments[sub] || [];
@@ -4414,49 +4449,54 @@ class TimetableApp {
     const isSelected = this.highlightedSubject === sub;
     const isDimmed = Boolean(this.highlightedSubject && !isSelected);
 
-    // 상태별 배지 스타일 및 테두리 클래스
+    // 상태별 테두리 및 배지 클래스
     let statusClass = 'subject-status-open';
     let statusBadgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-400 hover:bg-emerald-100';
     let statusSymbol = '🟢';
     let statusLabel = '개설';
 
-    if (isExcluded) {
+    if (status === 'closed') {
+      statusClass = 'subject-status-closed';
+      statusBadgeClass = 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100';
+      statusSymbol = '✖️';
+      statusLabel = '폐강';
+    } else if (status === 'excluded' || isExcluded) {
       statusClass = 'subject-status-excluded';
+      statusBadgeClass = 'bg-slate-100 text-slate-700 border-slate-300';
+      statusSymbol = '🚫';
+      statusLabel = '제외';
     } else if (status === 'adjust') {
       statusClass = 'subject-status-adjust';
       statusBadgeClass = 'bg-amber-50 text-amber-800 border-amber-400 hover:bg-amber-100';
       statusSymbol = '▲';
       statusLabel = '조정';
-    } else if (status === 'closed') {
-      statusClass = 'subject-status-closed';
-      statusBadgeClass = 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100';
-      statusSymbol = '✖️';
-      statusLabel = '폐강';
     }
 
-    // 1. 상태 순환 버튼 HTML (제외 상태가 아닐 때만 노출)
-    let statusButtonHtml = '';
-    if (!isExcluded) {
-      statusButtonHtml = '<button type="button" onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent(\'' + safeSub + '\'))" class="px-1.5 py-0.5 text-[10px] font-black rounded-lg border transition-all shadow-2xs flex items-center gap-0.5 cursor-pointer ' + statusBadgeClass + '" title="과목 상태 순환: 클릭할 때마다 [개설 ➔ 조정 ➔ 폐강]으로 변경됩니다 (1단계와 연동)"><span>' + statusSymbol + '</span><span>' + statusLabel + '</span></button>';
-    }
-
-    // 2. 제외/복구 버튼 HTML
-    let excludeButtonHtml = '';
+    // 1. 상태 순환 및 복구 버튼 HTML
+    let actionButtonsHtml = '';
     if (isExcluded) {
-      excludeButtonHtml = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 border border-slate-300 shrink-0">🚫 제외됨</span><button type="button" onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent(\'' + safeSub + '\'))" class="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0" title="제외 처리를 해제하고 일반 과목으로 복구"><i data-lucide="rotate-ccw" class="w-3 h-3"></i><span>복구</span></button>';
+      // 하단 제외/폐강 목록에 있는 경우: 상태에 따른 복구/개설 버튼
+      if (status === 'closed') {
+        actionButtonsHtml = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 shrink-0">✖️ 폐강됨</span><button type="button" onclick="event.stopPropagation(); window.app.setSubjectStatus(decodeURIComponent(\'' + safeSub + '\'), \'open\')" class="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0" title="폐강을 취소하고 [개설] 상태로 상단 과목 목록에 복구"><i data-lucide="rotate-ccw" class="w-3 h-3"></i><span>개설(복구)</span></button>';
+      } else {
+        actionButtonsHtml = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 border border-slate-300 shrink-0">🚫 제외됨</span><button type="button" onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent(\'' + safeSub + '\'))" class="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0" title="제외 처리를 해제하고 상단 과목 목록으로 복구"><i data-lucide="rotate-ccw" class="w-3 h-3"></i><span>복구</span></button>';
+      }
     } else {
-      excludeButtonHtml = '<button type="button" onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent(\'' + safeSub + '\'))" class="px-1.5 py-0.5 text-[10px] font-semibold rounded-lg bg-white/90 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-300 transition shadow-2xs cursor-pointer flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100" title="이 과목을 제외 처리하여 목록 맨 하단으로 이동"><i data-lucide="ban" class="w-3 h-3"></i><span>제외</span></button>';
+      // 상단 활성 목록에 있는 경우: 상태 순환 버튼(개설/조정/폐강) + 제외 버튼
+      actionButtonsHtml = '<button type="button" onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent(\'' + safeSub + '\'))" class="px-1.5 py-0.5 text-[10px] font-black rounded-lg border transition-all shadow-2xs flex items-center gap-0.5 cursor-pointer ' + statusBadgeClass + '" title="과목 상태 순환: 클릭할 때마다 [개설 ➔ 조정 ➔ 폐강]으로 변경됩니다"><span>' + statusSymbol + '</span><span>' + statusLabel + '</span></button><button type="button" onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent(\'' + safeSub + '\'))" class="px-1.5 py-0.5 text-[10px] font-semibold rounded-lg bg-white/90 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-300 transition shadow-2xs cursor-pointer flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100" title="이 과목을 제외 처리하여 하단 제외/폐강 목록으로 이동"><i data-lucide="ban" class="w-3 h-3"></i><span>제외</span></button>';
     }
 
-    // 3. 하단 스케줄 정보 요약 텍스트
+    // 2. 하단 스케줄 정보 요약 텍스트
     let scheduleSummaryHtml = '';
     let footerHintHtml = '';
     if (isExcluded) {
-      scheduleSummaryHtml = '<span class="text-rose-500 font-medium text-[10px]">시간표에서 제거됨</span>';
-      footerHintHtml = '<span class="text-slate-400 font-normal">[복구] 시 시간표 재배치 가능</span>';
-    } else if (status === 'closed') {
-      scheduleSummaryHtml = '<span class="text-rose-600 font-semibold text-[10px]">✖️ 폐강 과목</span>';
-      footerHintHtml = '<span class="text-rose-400">폐강 상태 (상태 버튼으로 개설 전환)</span>';
+      if (status === 'closed') {
+        scheduleSummaryHtml = '<span class="text-rose-600 font-semibold text-[10px]">✖️ 폐강 과목</span>';
+        footerHintHtml = '<span class="text-rose-500 font-normal">[개설] 시 시간표 재배치 가능</span>';
+      } else {
+        scheduleSummaryHtml = '<span class="text-slate-500 font-medium text-[10px]">🚫 제외 과목</span>';
+        footerHintHtml = '<span class="text-slate-400 font-normal">[복구] 시 시간표 재배치 가능</span>';
+      }
     } else {
       if (schedules.length > 0) {
         scheduleSummaryHtml = '<strong class="text-indigo-700 font-bold">' + schedules.length + '시간</strong> 배치됨';
@@ -4509,11 +4549,8 @@ class TimetableApp {
               <span>${isSelected ? '강조중' : '강조'}</span>
             </button>
 
-            <!-- 1단계와 연동되는 개설/조정/폐강 순환 버튼 -->
-            ${statusButtonHtml}
-
-            <!-- 제외/복구 버튼 -->
-            ${excludeButtonHtml}
+            <!-- 상태 및 액션 버튼 그룹 -->
+            ${actionButtonsHtml}
 
             <span class="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-white/90 border text-slate-700 shadow-2xs shrink-0">
               ${studentIds.length}명

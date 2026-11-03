@@ -18,7 +18,7 @@ class TimetableApp {
     this.storageKey = 'gw_online_school_timetable_data_v7';
     this.activeYear = '2027'; // 기본 활성 학년도: 2027학년도
     this.activeSemester = '1'; // 기본 활성 학기: 1학기 ('1' | '2')
-    this.academicYears = ['2027', '2026'];
+    this.academicYears = ['2027'];
     this.currentWorkflowTab = 'step1'; // 'step1' | 'step2'
     this.yearsData = {};
 
@@ -422,8 +422,9 @@ class TimetableApp {
         const data = JSON.parse(saved);
         this.yearsData = data.yearsData || data.years || {};
         this.academicYears = (data.academicYears && data.academicYears.length > 0) ? data.academicYears : Object.keys(this.yearsData);
-        if (!this.academicYears.includes('2027')) this.academicYears.unshift('2027');
-        if (!this.academicYears.includes('2026')) this.academicYears.push('2026');
+        if (this.academicYears.length === 0) {
+          this.academicYears = [this.activeYear || '2027'];
+        }
         this.academicYears = Array.from(new Set(this.academicYears.filter(y => y && !['undefined', 'null'].includes(String(y)))));
 
         this.activeYear = data.activeYear || '2027';
@@ -431,10 +432,10 @@ class TimetableApp {
         this.jsonUpdatedTime = data.jsonUpdatedTime || null;
         this.jsonFileName = data.jsonFileName || null;
 
-        this.ensureYearSemesterData('2027', '1');
-        this.ensureYearSemesterData('2027', '2');
-        this.ensureYearSemesterData('2026', '1');
-        this.ensureYearSemesterData('2026', '2');
+        this.academicYears.forEach(year => {
+          this.ensureYearSemesterData(year, '1');
+          this.ensureYearSemesterData(year, '2');
+        });
 
         this.loadActiveYearSemesterData();
         return;
@@ -446,7 +447,7 @@ class TimetableApp {
     // 초기 상태 (2027학년도 1학기 기본 - 학생 정보 없는 깨끗한 기본 서식 적용)
     this.activeYear = '2027';
     this.activeSemester = '1';
-    this.academicYears = ['2027', '2026'];
+    this.academicYears = ['2027'];
     if (typeof INITIAL_YEARS_DATA !== 'undefined') {
       this.yearsData = JSON.parse(JSON.stringify(INITIAL_YEARS_DATA));
     } else {
@@ -499,8 +500,9 @@ class TimetableApp {
     if (data.yearsData || data.years) {
       this.yearsData = data.yearsData || data.years;
       this.academicYears = data.academicYears || Object.keys(this.yearsData);
-      if (!this.academicYears.includes('2026')) this.academicYears.unshift('2026');
-      if (!this.academicYears.includes('2027')) this.academicYears.push('2027');
+      if (this.academicYears.length === 0) {
+        this.academicYears = ['2027'];
+      }
       if (data.activeYear && this.academicYears.includes(data.activeYear)) this.activeYear = data.activeYear;
       this.activeSemester = data.activeSemester || '1';
     }
@@ -803,6 +805,10 @@ class TimetableApp {
   syncOfferedSubjects() {
     const subSet = new Set(this.offeredSubjects);
     Object.keys(this.courseEnrollments || {}).forEach(s => subSet.add(s));
+    Object.keys(this.courseSchedules || {}).forEach(s => subSet.add(s));
+    (this.timetableVersions || []).forEach(v => {
+      Object.keys(v.courseSchedules || {}).forEach(s => subSet.add(s));
+    });
     this.offeredSubjects = Array.from(subSet).filter(Boolean);
   }
 
@@ -1118,7 +1124,7 @@ class TimetableApp {
     // 1. 현재 작업 중인 활성 학기 데이터를 먼저 저장
     this.saveActiveYearSemesterData();
 
-    const targetYear = this.activeYear || '2026';
+    const targetYear = this.activeYear || '2027';
     this.ensureYearSemesterData(targetYear, '1');
     this.ensureYearSemesterData(targetYear, '2');
 
@@ -1209,7 +1215,7 @@ class TimetableApp {
   // ==========================================
   // 학기·과목별 수강자 명단 수집 헬퍼 (1학기 -> 2학기, 학년/반/번호 순 정렬)
   // ==========================================
-  collectSubjectRosterData(targetYear = this.activeYear || '2026') {
+  collectSubjectRosterData(targetYear = this.activeYear || '2027') {
     this.saveActiveYearSemesterData();
 
     const yearData = this.yearsData[targetYear] || {};
@@ -1858,7 +1864,7 @@ class TimetableApp {
         title: '강원온라인학교 수강신청 현황 및 시간표 데이터',
         version: '2.0',
         exportedAt: new Date().toISOString(),
-        academicYears: this.academicYears || ['2027', '2026'],
+        academicYears: this.academicYears || ['2027'],
         activeYear: this.activeYear,
         activeSemester: this.activeSemester,
         yearsData: this.yearsData,
@@ -3814,11 +3820,17 @@ class TimetableApp {
     const sideListContainer = document.getElementById('side-subject-list-container');
     const sideCountBadge = document.getElementById('side-subject-count-badge');
 
+    // 활성 과목(open, adjust)과 제외/폐강 과목(closed, excluded) 분리
+    const activeSubs = this.offeredSubjects.filter(s => !this.isSubjectExcluded(s));
+    const excludedSubs = this.offeredSubjects.filter(s => this.isSubjectExcluded(s));
+
     if (sideCountBadge) {
       sideCountBadge.textContent = `${this.offeredSubjects.length}개`;
     }
 
-    // [좌측]: 세로 과목 목록 렌더링 (과목명, 인원수, 개설/조정/폐강 상태 배지 표시 및 클릭 스크롤)
+    // ==========================================
+    // [1단계 좌측]: 세로 과목 목록
+    // ==========================================
     if (sideListContainer) {
       if (this.offeredSubjects.length === 0) {
         sideListContainer.innerHTML = `
@@ -3827,7 +3839,7 @@ class TimetableApp {
           </div>
         `;
       } else {
-        sideListContainer.innerHTML = this.offeredSubjects.map(sub => {
+        const renderSideItem = (sub, isExcludedGroup) => {
           const color = this.getSubjectColor(sub);
           const studentIds = this.courseEnrollments[sub] || [];
           const safeSub = encodeURIComponent(sub);
@@ -3835,7 +3847,6 @@ class TimetableApp {
           const status = this.getSubjectStatus(sub);
           const isSelected = this.activeSelectedSubject === sub;
 
-          // 상태별 배지 스타일 및 텍스트
           let statusBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400';
           let statusSymbol = '🟢';
           let statusLabel = '개설';
@@ -3843,13 +3854,18 @@ class TimetableApp {
 
           if (status === 'adjust') {
             statusBadgeClass = 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 hover:border-amber-400';
-            statusSymbol = '▲';
+            statusSymbol = '🟡';
             statusLabel = '조정';
             itemStyleClass = 'border-amber-200 bg-amber-50/30 hover:border-amber-400 hover:bg-amber-50/60';
           } else if (status === 'closed') {
             statusBadgeClass = 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100 hover:border-rose-400';
-            statusSymbol = '✖️';
+            statusSymbol = '🔴';
             statusLabel = '폐강';
+            itemStyleClass = 'border-slate-300 bg-slate-100/90 text-slate-400';
+          } else if (status === 'excluded') {
+            statusBadgeClass = 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200';
+            statusSymbol = '🚫';
+            statusLabel = '제외';
             itemStyleClass = 'border-slate-300 bg-slate-100/90 text-slate-400';
           }
 
@@ -3857,62 +3873,109 @@ class TimetableApp {
             itemStyleClass += ' ring-2 ring-indigo-300 border-indigo-500';
           }
 
+          let actionButtons = '';
+          if (isExcludedGroup) {
+            // 제외/폐강 그룹: 복구 버튼
+            actionButtons = `
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded shadow-2xs ${status === 'closed' ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-200 text-slate-700 border border-slate-300'}">
+                ${status === 'closed' ? '폐강' : '제외'}
+              </span>
+              <button type="button" 
+                      onclick="event.stopPropagation(); ${status === 'closed' ? `window.app.setSubjectStatus(decodeURIComponent('${safeSub}'), 'open')` : `window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))`}"
+                      class="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs flex items-center gap-0.5 cursor-pointer"
+                      title="이 과목을 복구하여 개설 상태로 활성화">
+                <i data-lucide="rotate-ccw" class="w-2.5 h-2.5"></i>
+                <span>복구</span>
+              </button>
+            `;
+          } else {
+            // 활성 그룹: 상태 순환 배지 + 제외 버튼
+            actionButtons = `
+              <button type="button" 
+                      onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent('${safeSub}'))"
+                      class="px-1.5 py-0.5 text-[10px] font-black rounded border transition-all shadow-2xs flex items-center gap-0.5 ${statusBadgeClass}"
+                      title="클릭하여 상태 전환 (개설 ➔ 조정 ➔ 폐강)">
+                <span class="text-[9px]">${statusSymbol}</span>
+                <span>${statusLabel}</span>
+              </button>
+              <button type="button" 
+                      onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))"
+                      class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition" 
+                      title="이 과목을 제외 처리하여 하단 목록으로 이동">
+                <i data-lucide="ban" class="w-3 h-3"></i>
+              </button>
+            `;
+          }
+
           return `
             <div id="side-item-${safeSub}"
-                 class="side-subject-item group flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-xl border transition-all cursor-pointer shadow-2xs ${itemStyleClass}"
+                 class="side-subject-item group flex items-center justify-between gap-1 px-2 py-1.5 rounded-xl border transition-all cursor-pointer shadow-2xs ${itemStyleClass}"
                  draggable="false"
                  onclick="window.app.scrollToBucket(decodeURIComponent('${safeSub}'))"
                  ondragover="window.app.handleBucketDragOver(event)"
                  ondragleave="window.app.handleBucketDragLeave(event)"
                  ondrop="window.app.handleBucketDrop(event, decodeURIComponent('${safeSub}'))"
-                 title="클릭하여 해당 과목으로 이동 / 학생을 여기에 드롭하여 편제">
+                 title="클릭하여 해당 과목 버킷으로 이동">
               <div class="flex items-center gap-1.5 min-w-0">
                 <span class="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs" 
-                      style="background-color: ${status === 'closed' ? '#94A3B8' : (status === 'adjust' ? '#F59E0B' : color.text)};"></span>
-                <span class="text-xs font-bold whitespace-nowrap truncate ${status === 'closed' ? 'line-through text-slate-400' : 'text-slate-800 group-hover:text-indigo-900'}">
+                      style="background-color: ${(status === 'closed' || status === 'excluded') ? '#94A3B8' : (status === 'adjust' ? '#F59E0B' : color.text)};"></span>
+                <span class="text-xs font-bold whitespace-nowrap truncate ${(status === 'closed' || status === 'excluded') ? 'line-through text-slate-400' : 'text-slate-800 group-hover:text-indigo-900'}">
                   ${sub}
                 </span>
               </div>
 
               <div class="flex items-center gap-1 shrink-0">
-                <!-- 과목명 수정 버튼 -->
                 <button type="button" 
                         onclick="event.stopPropagation(); window.app.handleRenameSubject(decodeURIComponent('${safeSub}'))" 
-                        class="p-1 rounded text-slate-300 hover:text-indigo-600 hover:bg-slate-100 transition" 
+                        class="p-0.5 rounded text-slate-300 hover:text-indigo-600 hover:bg-slate-100 transition" 
                         title="'${sub}' 과목명 수정">
                   <i data-lucide="edit-3" class="w-3 h-3"></i>
                 </button>
-
-                <!-- 인원수 배지 -->
-                <span class="text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-2xs ${
-                  status === 'closed' ? 'bg-slate-200 text-slate-500' : (status === 'adjust' ? 'bg-amber-100 text-amber-800' : (count > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'))
+                <span class="text-[10px] font-black px-1 py-0.5 rounded-full shadow-2xs ${
+                  (status === 'closed' || status === 'excluded') ? 'bg-slate-200 text-slate-500' : (status === 'adjust' ? 'bg-amber-100 text-amber-800' : (count > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'))
                 }">
-                  (${count}명)
+                  (${count})
                 </span>
-
-                <!-- 개설 / 조정 / 폐강 3단 순환 토글 배지 버튼 -->
-                <button type="button" 
-                        onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent('${safeSub}'))"
-                        class="px-1.5 py-0.5 text-[10px] font-black rounded border transition-all shadow-2xs flex items-center gap-0.5 ${statusBadgeClass}"
-                        title="클릭하여 상태 순환 (개설 ➔ 조정 ➔ 폐강 ➔ 개설)">
-                  <span class="text-[9px]">${statusSymbol}</span>
-                  <span>${statusLabel}</span>
-                </button>
+                ${actionButtons}
               </div>
             </div>
           `;
-        }).join('');
+        };
+
+        let sideHtml = '';
+        if (activeSubs.length > 0) {
+          sideHtml += activeSubs.map(s => renderSideItem(s, false)).join('');
+        } else {
+          sideHtml += `<div class="py-3 text-center text-slate-400 text-xs italic">활성 과목이 없습니다.</div>`;
+        }
+
+        if (excludedSubs.length > 0) {
+          sideHtml += `
+            <div class="pt-3 pb-1 px-1 border-t border-dashed border-slate-300 mt-2 flex items-center justify-between text-[11px] font-bold text-slate-500">
+              <span class="flex items-center gap-1">
+                <i data-lucide="ban" class="w-3 h-3 text-rose-500"></i>
+                <span>제외 / 폐강 목록 (${excludedSubs.length})</span>
+              </span>
+            </div>
+          `;
+          sideHtml += excludedSubs.map(s => renderSideItem(s, true)).join('');
+        }
+
+        sideListContainer.innerHTML = sideHtml;
       }
     }
 
+    // ==========================================
+    // [1단계 우측 본문]: 과목별 버킷 카드
+    // ==========================================
     if (!container) return;
 
     if (this.offeredSubjects.length === 0) {
       container.innerHTML = `
-        <div class="col-span-full py-16 text-center text-slate-400 bg-slate-50/60 rounded-xl border border-dashed border-slate-300">
-          <i data-lucide="folders" class="w-10 h-10 mx-auto mb-2.5 opacity-40"></i>
-          <p class="font-bold text-slate-700 text-sm">개설된 과목이 없습니다.</p>
-          <p class="text-xs text-slate-400 mt-1">상단의 <strong>[+ 새 과목 개설]</strong>로 과목을 추가해주세요.</p>
+        <div class="col-span-full py-16 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
+          <i data-lucide="folder-plus" class="w-12 h-12 mx-auto text-slate-300 mb-3"></i>
+          <p class="font-bold text-base text-slate-600 mb-1">등록된 과목이 없습니다.</p>
+          <p class="text-xs text-slate-400">좌측의 '과목 추가'를 통해 새 과목을 생성하거나, 엑셀을 업로드해주세요.</p>
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();
@@ -3920,117 +3983,134 @@ class TimetableApp {
     }
 
     const masterMap = new Map(this.masterStudents.map(s => [s.id, s]));
-    const regularPeriods = this.periods.filter(p => !p.isBreak);
     const activeDays = this.showWeekends ? this.days : this.days.filter(d => !d.isWeekend);
+    const regularPeriods = this.periods.filter(p => !p.isBreak);
 
-    let html = '';
-    this.offeredSubjects.forEach(sub => {
+    const renderBucketCard = (sub, isExcludedGroup) => {
       const color = this.getSubjectColor(sub);
       const studentIds = this.courseEnrollments[sub] || [];
-      const schedules = this.courseSchedules[sub] || [];
       const safeSub = encodeURIComponent(sub);
+      const schedules = this.courseSchedules[sub] || [];
       const status = this.getSubjectStatus(sub);
 
-      let cardBorder = 'subject-status-open';
-      let headerBg = color.bg;
-      let headerBorder = color.border;
+      let statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200';
+      let statusSymbol = '🟢';
+      let statusLabel = '개설';
+      let cardBorderClass = 'subject-status-open';
 
       if (status === 'adjust') {
-        cardBorder = 'subject-status-adjust';
-        headerBg = '#FEF3C7';
-        headerBorder = '#FDE68A';
+        statusBadgeClass = 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200';
+        statusSymbol = '🟡';
+        statusLabel = '조정';
+        cardBorderClass = 'subject-status-adjust';
       } else if (status === 'closed') {
-        cardBorder = 'subject-status-closed';
-        headerBg = '#F1F5F9';
-        headerBorder = '#CBD5E1';
+        statusBadgeClass = 'bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200';
+        statusSymbol = '🔴';
+        statusLabel = '폐강';
+        cardBorderClass = 'subject-status-closed';
+      } else if (status === 'excluded') {
+        statusBadgeClass = 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200';
+        statusSymbol = '🚫';
+        statusLabel = '제외';
+        cardBorderClass = 'subject-status-excluded';
       }
 
-      html += `
-        <div id="bucket-card-${safeSub}" 
-             class="bucket-card w-full shrink-0 bg-white rounded-2xl border-2 shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-lg scroll-mt-36 ${cardBorder}"
+      let headerActionsHtml = '';
+      if (isExcludedGroup) {
+        headerActionsHtml = `
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${status === 'closed' ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-slate-200 text-slate-700 border border-slate-300'}">
+              ${status === 'closed' ? '🔴 폐강됨' : '🚫 제외됨'}
+            </span>
+            <button type="button" 
+                    onclick="event.stopPropagation(); ${status === 'closed' ? `window.app.setSubjectStatus(decodeURIComponent('${safeSub}'), 'open')` : `window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))`}" 
+                    class="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                    title="이 과목을 복구하여 개설 상태로 활성화">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              <span>복구 (개설)</span>
+            </button>
+          </div>
+        `;
+      } else {
+        headerActionsHtml = `
+          <div class="flex items-center gap-1.5">
+            <button type="button" 
+                    onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent('${safeSub}'))" 
+                    class="px-2.5 py-1 text-xs font-black rounded-lg border transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ${statusBadgeClass}" 
+                    title="클릭하여 상태 전환 (🟢 개설 ➔ 🟡 조정 ➔ 🔴 폐강)">
+              <span>${statusSymbol}</span>
+              <span>${statusLabel}</span>
+            </button>
+            <button type="button" 
+                    onclick="event.stopPropagation(); window.app.toggleExcludeSubject(decodeURIComponent('${safeSub}'))" 
+                    class="px-2 py-1 text-xs font-semibold rounded-lg bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-300 transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                    title="이 과목을 제외 처리하여 하단 '제외/폐강 목록'으로 이동">
+              <i data-lucide="ban" class="w-3.5 h-3.5"></i>
+              <span>제외</span>
+            </button>
+          </div>
+        `;
+      }
+
+      return `
+        <div id="bucket-card-${safeSub}"
+             class="subject-bucket-card rounded-2xl shadow-xs border p-5 mb-5 transition-all relative group ${cardBorderClass} ${isExcludedGroup ? 'bg-slate-50/80' : 'bg-white'}"
              ondragover="window.app.handleBucketDragOver(event)"
              ondragleave="window.app.handleBucketDragLeave(event)"
              ondrop="window.app.handleBucketDrop(event, decodeURIComponent('${safeSub}'))">
           
-          <!-- 과목 카드 상단 헤더 -->
-          <div class="p-4 border-b flex items-center justify-between shrink-0"
-               style="background-color: ${headerBg}; border-color: ${headerBorder};">
-            <div class="flex items-center gap-2.5 flex-wrap">
-              <span class="w-4 h-4 rounded-full border shadow-2xs" 
-                    style="background-color: ${status === 'closed' ? '#94A3B8' : (status === 'adjust' ? '#F59E0B' : color.text)}; border-color: ${headerBorder};"></span>
-              <div class="flex items-center gap-1.5">
-                <h3 class="font-black text-base ${status === 'closed' ? 'line-through text-slate-500' : ''}" style="color: ${status === 'closed' ? '#64748B' : color.text};">${sub}</h3>
+          <div class="flex flex-col gap-4">
+            
+            <!-- 버킷 헤더 -->
+            <div class="flex items-center justify-between gap-3 pb-3 border-b border-slate-200 flex-wrap">
+              <div class="flex items-center gap-2">
+                <span class="w-4 h-4 rounded-full shadow-2xs shrink-0" 
+                      style="background-color: ${(status === 'closed' || status === 'excluded') ? '#94A3B8' : (status === 'adjust' ? '#F59E0B' : color.text)};"></span>
+                <span class="font-extrabold text-base ${(status === 'closed' || status === 'excluded') ? 'line-through text-slate-400' : 'text-slate-900'}">
+                  ${sub}
+                </span>
                 <button type="button" 
-                        onclick="event.stopPropagation(); window.app.handleRenameSubject(decodeURIComponent('${safeSub}'))" 
-                        class="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-white/90 transition shadow-2xs" 
-                        title="'${sub}' 과목명 수정">
+                        onclick="window.app.handleRenameSubject(decodeURIComponent('${safeSub}'))" 
+                        class="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition" 
+                        title="과목명 수정">
                   <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
                 </button>
+                <span class="text-xs font-bold px-2.5 py-0.5 rounded-full shadow-2xs ${
+                  (status === 'closed' || status === 'excluded') ? 'bg-slate-200 text-slate-600' : (status === 'adjust' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-700')
+                }">
+                  ${studentIds.length}명 수강
+                </span>
+                ${headerActionsHtml}
               </div>
 
-              <!-- 과목명 오른쪽: 학생 이름 검색 및 엔터 즉시 등록 입력창 -->
-              <div class="flex items-center bg-white/95 border border-indigo-200 rounded-lg px-2 py-0.5 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-400 transition" 
-                   onclick="event.stopPropagation()">
-                <i data-lucide="user-plus" class="w-3.5 h-3.5 text-indigo-500 mr-1 shrink-0"></i>
-                <input type="text" 
-                       id="input-enroll-student-${safeSub}" 
-                       placeholder="학생명 입력 후 Enter" 
-                       class="text-xs bg-transparent border-none outline-none w-28 sm:w-36 text-slate-800 placeholder:text-slate-400 font-medium py-0.5" 
-                       onkeydown="if(event.key === 'Enter') { event.preventDefault(); window.app.handleQuickEnrollStudentByEnter(decodeURIComponent('${safeSub}'), this); }" 
-                       title="학생 이름을 입력하고 Enter를 누르면 기준 학생명부에서 찾아 '${sub}' 과목에 즉시 등록됩니다.">
+              <div class="flex items-center gap-1.5">
                 <button type="button" 
-                        onclick="event.stopPropagation(); const inp = document.getElementById('input-enroll-student-${safeSub}'); if(inp) window.app.handleQuickEnrollStudentByEnter(decodeURIComponent('${safeSub}'), inp);" 
-                        class="ml-1 text-indigo-600 hover:text-indigo-800 p-0.5 rounded transition cursor-pointer" 
-                        title="등록">
-                  <i data-lucide="corner-down-left" class="w-3 h-3"></i>
+                        onclick="window.app.openTransferSubjectModal(decodeURIComponent('${safeSub}'))" 
+                        class="px-2.5 py-1 text-xs font-bold rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 hover:border-indigo-300 transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                        title="'${sub}' 과목을 다른 학년도/학기로 복사하거나 이동">
+                  <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i>
+                  <span>학기 이동/복사</span>
+                </button>
+
+                <button type="button" 
+                        onclick="window.app.handleDownloadSingleSubjectExcel(decodeURIComponent('${safeSub}'))" 
+                        class="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition shadow-2xs" 
+                        title="'${sub}' 과목 수강생 엑셀 다운로드">
+                  <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                </button>
+
+                <button type="button" 
+                        onclick="window.app.handleDeleteSubject(decodeURIComponent('${safeSub}'))" 
+                        class="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-300 transition shadow-2xs" 
+                        title="'${sub}' 과목 완전히 삭제">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
               </div>
-
-              <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-white/90 border text-slate-800 shadow-2xs">
-                ${studentIds.length}명 수강
-              </span>
-
-              <!-- 개설 / 조정 / 폐강 원클릭 순환 배지 버튼 (선택지 없이 클릭할 때마다 순환 변경) -->
-              <button type="button" 
-                      onclick="event.stopPropagation(); window.app.cycleSubjectStatus(decodeURIComponent('${safeSub}'))" 
-                      class="px-2.5 py-1 text-xs font-black rounded-lg border transition-all shadow-2xs flex items-center gap-1.5 ${
-                        status === 'open' 
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' 
-                          : (status === 'adjust' 
-                              ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200' 
-                              : 'bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200')
-                      }" 
-                      title="클릭하여 상태 순환 (🟢 개설 ➔ 🔺 조정 ➔ ✖️ 폐강 ➔ 🟢 개설)">
-                <span>${status === 'open' ? '🟢' : (status === 'adjust' ? '🔺' : '✖️')}</span>
-                <span>${status === 'open' ? '개설' : (status === 'adjust' ? '조정' : '폐강')}</span>
-              </button>
             </div>
 
-            <div class="flex items-center gap-1.5">
-              <!-- 학년도/학기 전용 이전/복사 버튼 -->
-              <button type="button" 
-                      onclick="window.app.openSubjectTransferModal(decodeURIComponent('${safeSub}'))" 
-                      class="px-2.5 py-1 text-xs font-bold rounded-lg bg-white/90 hover:bg-white text-indigo-700 border border-indigo-200 shadow-2xs transition flex items-center gap-1" 
-                      title="'${sub}' 과목을 다른 학기/학년도로 복사 또는 이동">
-                <i data-lucide="arrow-left-right" class="w-3.5 h-3.5 text-indigo-600"></i>
-                <span class="hidden sm:inline">학기 이전/복사</span>
-              </button>
-
-              <!-- 과목 삭제 -->
-              <button type="button" 
-                      onclick="window.app.handleDeleteSubjectBucket(decodeURIComponent('${safeSub}'))" 
-                      class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-white/80 transition" title="과목 삭제">
-                <i data-lucide="trash-2" class="w-4 h-4"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- 본문: 수강생 명단 & 시간표 설정 (드래그 영역 박스 제거) -->
-          <div class="p-4 sm:p-5 flex flex-col gap-4">
-            
-            <!-- 편제된 학생 명단 칩 목록 -->
+            <!-- 수강 학생 명단 영역 -->
             <div>
-              <div class="flex items-center justify-between text-xs font-bold text-slate-800 mb-2.5">
+              <div class="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5">
                 <span class="flex items-center gap-1.5">
                   <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
                   <span>수강 학생 명단 (${studentIds.length}명)</span>
@@ -4069,62 +4149,104 @@ class TimetableApp {
               </div>
             </div>
 
-            <!-- 과목 시간표 시간 설정 바 (시간표 자동 배치) -->
-            <div class="pt-3.5 border-t border-slate-200 flex flex-col gap-2">
-              <div class="flex items-center justify-between text-xs font-bold text-slate-800">
-                <span class="flex items-center gap-1.5">
-                  <i data-lucide="clock" class="w-4 h-4 text-indigo-600"></i>
-                  <span>과목 시간 설정 (종합 시간표 자동 배치)</span>
-                </span>
-                <span class="text-xs text-indigo-700 font-bold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200">${schedules.length}시간 편성</span>
+            <!-- 과목 시간표 편성 영역 -->
+            ${isExcludedGroup ? `
+              <div class="pt-3 border-t border-slate-200">
+                <div class="p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-xs flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="info" class="w-4 h-4 text-slate-400"></i>
+                    <span>이 과목은 ${status === 'closed' ? '폐강' : '제외'} 상태로 종합 시간표에 배치되지 않습니다.</span>
+                  </div>
+                  <span class="text-[11px] font-semibold text-slate-400">상단 복구 버튼으로 재활성화 가능</span>
+                </div>
               </div>
+            ` : `
+              <div class="pt-3.5 border-t border-slate-200 flex flex-col gap-2">
+                <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                  <span class="flex items-center gap-1.5">
+                    <i data-lucide="clock" class="w-4 h-4 text-indigo-600"></i>
+                    <span>과목 시간표 설정 (종합 시간표 연동 배치)</span>
+                  </span>
+                  <span class="text-xs text-indigo-700 font-bold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200">${schedules.length}시간 편성</span>
+                </div>
 
-              <!-- 요일 + 교시 추가 폼 -->
-              <div class="flex items-center gap-2">
-                <select id="bucket-day-${sub}" class="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
-                  ${activeDays.map(d => `<option value="${d.id}">${d.fullName}</option>`).join('')}
-                </select>
-                <select id="bucket-period-${sub}" class="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
-                  ${regularPeriods.map(p => `<option value="${p.id}">${p.name} (${p.startTime})</option>`).join('')}
-                </select>
-                <button type="button" 
-                        onclick="window.app.handleAddBucketSchedule(decodeURIComponent('${safeSub}'))" 
-                        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition whitespace-nowrap shadow-xs flex items-center gap-1">
-                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                  <span>시간 추가</span>
-                </button>
+                <div class="flex items-center gap-2">
+                  <select id="bucket-day-${sub}" class="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
+                    ${activeDays.map(d => `<option value="${d.id}">${d.fullName}</option>`).join('')}
+                  </select>
+                  <select id="bucket-period-${sub}" class="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
+                    ${regularPeriods.map(p => `<option value="${p.id}">${p.name} (${p.startTime})</option>`).join('')}
+                  </select>
+                  <button type="button" 
+                          onclick="window.app.handleAddBucketSchedule(decodeURIComponent('${safeSub}'))" 
+                          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition whitespace-nowrap shadow-xs flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    <span>시간 추가</span>
+                  </button>
+                </div>
+
+                <div class="flex flex-wrap gap-1.5 mt-1 min-h-[30px] items-center">
+                  ${schedules.length > 0 ? schedules.map(sch => {
+                    const dayName = ExcelService.dayIdToName(sch.day);
+                    const periodObj = this.periods.find(p => p.id === sch.periodId || (!sch.periodId && p.period === sch.period));
+                    const periodName = periodObj ? periodObj.name : `${sch.period}교시`;
+                    const sym = ExcelService.getStatusSymbol(sch.status || 'confirmed');
+                    return `
+                      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-2xs">
+                        <span>${sym}</span>
+                        <span>${dayName} ${periodName}</span>
+                        <button type="button" 
+                                onclick="window.app.handleRemoveBucketSchedule(decodeURIComponent('${safeSub}'), '${sch.id || (sch.day + '_' + sch.periodId)}')"
+                                class="text-indigo-400 hover:text-red-600 ml-1 text-sm font-bold" title="시간표에서 배치 해제">&times;</button>
+                      </span>
+                    `;
+                  }).join('') : `
+                    <span class="text-xs text-slate-400 italic">아직 시간표에 배치된 시간이 없습니다. 요일과 교시를 선택 후 추가하세요.</span>
+                  `}
+                </div>
               </div>
-
-              <!-- 현재 편성된 시간 칩 목록 (여러 날, 여러 시간) -->
-              <div class="flex flex-wrap gap-1.5 mt-1 min-h-[30px] items-center">
-                ${schedules.length > 0 ? schedules.map(sch => {
-                  const dayName = ExcelService.dayIdToName(sch.day);
-                  const periodObj = this.periods.find(p => p.id === sch.periodId || (!sch.periodId && p.period === sch.period));
-                  const periodName = periodObj ? periodObj.name : `${sch.period}교시`;
-                  const sym = ExcelService.getStatusSymbol(sch.status || 'confirmed');
-                  return `
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-2xs">
-                      <span>${sym}</span>
-                      <span>${dayName} ${periodName}</span>
-                      <button type="button" 
-                              onclick="window.app.handleRemoveBucketSchedule(decodeURIComponent('${safeSub}'), '${sch.id || (sch.day + '_' + sch.periodId)}')"
-                              class="text-indigo-400 hover:text-red-600 ml-1 text-sm font-bold" title="시간표에서 배치 해제">&times;</button>
-                    </span>
-                  `;
-                }).join('') : `
-                  <span class="text-xs text-slate-400 italic">아직 시간표에 배치된 시간이 없습니다. 요일과 교시를 선택 후 추가하세요.</span>
-                `}
-              </div>
-
-            </div>
+            `}
 
           </div>
-
         </div>
       `;
-    });
+    };
 
-    container.innerHTML = html;
+    let bodyHtml = '';
+    if (activeSubs.length > 0) {
+      bodyHtml += activeSubs.map(s => renderBucketCard(s, false)).join('');
+    } else {
+      bodyHtml += `
+        <div class="py-10 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white mb-6">
+          <p class="font-bold text-sm text-slate-600">활성화된 과목이 없습니다.</p>
+          <p class="text-xs text-slate-400 mt-1">모든 과목이 제외/폐강되었거나 아직 등록되지 않았습니다.</p>
+        </div>
+      `;
+    }
+
+    if (excludedSubs.length > 0) {
+      bodyHtml += `
+        <div class="mt-8 mb-4 p-4 rounded-2xl bg-slate-100/90 border border-slate-300 flex items-center justify-between text-slate-700 shadow-2xs">
+          <div class="flex items-center gap-2.5">
+            <span class="p-2 rounded-xl bg-rose-100 text-rose-700 font-bold shrink-0">
+              <i data-lucide="ban" class="w-5 h-5"></i>
+            </span>
+            <div>
+              <div class="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                <span>🚫 제외 및 폐강 과목 목록</span>
+                <span class="px-2 py-0.5 text-xs rounded-full bg-slate-200 text-slate-700 font-bold">${excludedSubs.length}개</span>
+              </div>
+              <div class="text-xs text-slate-500 mt-0.5">
+                이 목록의 과목은 종합 시간표 편성에서 제외됩니다. '복구' 버튼을 누르면 즉시 상단 활성 목록으로 복귀합니다.
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      bodyHtml += excludedSubs.map(s => renderBucketCard(s, true)).join('');
+    }
+
+    container.innerHTML = bodyHtml;
     if (window.lucide) window.lucide.createIcons();
   }
 

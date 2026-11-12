@@ -1145,9 +1145,9 @@ const ExcelService = {
       const blockStartRow = currentRow;
       const blockEndRow = blockStartRow + maxBlockRows - 1;
 
-      // ★ 사용자 요구사항: 1명 신청 행(maxBlockRows === 1)의 경우 과목명-줄바꿈-개설상태가 모두 잘 보이도록 최소 44pt 설정!
-      // 2명 이상인 과목은 현재처럼 각 행당 29pt 적용 (병합되어 58pt 이상 확보됨)
-      const dynamicRowHeight = maxBlockRows === 1 ? 44 : 29;
+      // ★ 방안 2 적용: 1명 신청 과목이 다른 과목과 같은 교시에 묶여 1행만 차지하더라도 텍스트(과목명+상태)가 잘리지 않도록
+      // 2명 이상 블록의 기본 행당 높이를 기존 29pt -> 38pt로 대폭 상향! (1명 과목도 최소 38pt 확보)
+      const dynamicRowHeight = maxBlockRows === 1 ? 44 : 38;
       for (let r = blockStartRow; r <= blockEndRow; r++) {
         sheet.getRow(r).height = dynamicRowHeight;
       }

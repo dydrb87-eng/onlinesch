@@ -42,6 +42,13 @@ class TimetableApp {
 
     // UI 상태 관리
     this.selectedStep1StudentIds = new Set();
+    this.timetableNotices = {};
+    try {
+      const savedNotices = localStorage.getItem('gw_timetable_notices_by_year');
+      if (savedNotices) this.timetableNotices = JSON.parse(savedNotices);
+    } catch (e) {
+      console.warn('Failed to parse saved notices:', e);
+    }
     this.step1Filter = {
       search: '',
       grade: 'all',
@@ -1067,12 +1074,54 @@ class TimetableApp {
       this.updateWeekendToggleBtn();
     });
 
+    // 8-2. 1·2학기 통합시간표 안내 사항 모달 이벤트
+    const noticeModal = document.getElementById('modal-timetable-notice');
+    const noticeTextarea = document.getElementById('textarea-timetable-notice');
+
+    document.getElementById('btn-open-timetable-notice')?.addEventListener('click', () => {
+      const currentNotice = (this.timetableNotices && this.timetableNotices[this.activeYear]) || '';
+      if (noticeTextarea) {
+        noticeTextarea.value = currentNotice;
+      }
+      if (noticeModal) {
+        noticeModal.classList.remove('hidden');
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+
+    const closeNoticeModal = () => {
+      if (noticeModal) noticeModal.classList.add('hidden');
+    };
+
+    document.getElementById('btn-close-timetable-notice')?.addEventListener('click', closeNoticeModal);
+    document.getElementById('btn-cancel-timetable-notice')?.addEventListener('click', closeNoticeModal);
+    noticeModal?.addEventListener('click', (e) => {
+      if (e.target === noticeModal) closeNoticeModal();
+    });
+
+    document.getElementById('btn-reset-timetable-notice')?.addEventListener('click', () => {
+      if (noticeTextarea) noticeTextarea.value = '';
+    });
+
+    document.getElementById('btn-save-timetable-notice')?.addEventListener('click', () => {
+      const val = (noticeTextarea?.value || '').trim();
+      if (!this.timetableNotices) this.timetableNotices = {};
+      this.timetableNotices[this.activeYear] = val;
+      try {
+        localStorage.setItem('gw_timetable_notices_by_year', JSON.stringify(this.timetableNotices));
+      } catch (e) {}
+
+      closeNoticeModal();
+      this.showToast(`[${this.activeYear}학년도] 1·2학기 통합시간표 안내 사항이 저장되었습니다.`);
+    });
+
     // 9. 엑셀 다운로드 (학급 시간표 & 원천 데이터)
     document.getElementById('btn-export-timetable')?.addEventListener('click', () => {
       const activeDays = this.showWeekends ? this.days : this.days.filter(d => !d.isWeekend);
       this.saveActiveYearSemesterData();
       const currentYearData = this.yearsData[this.activeYear] || {};
-      ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '상지대관령고', this.courseEnrollments, this.masterStudents, this.courseStatus, currentYearData);
+      const currentNotice = (this.timetableNotices && this.timetableNotices[this.activeYear]) || '';
+      ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '상지대관령고', this.courseEnrollments, this.masterStudents, this.courseStatus, currentYearData, currentNotice);
       this.showToast(`[${this.activeYear}학년도 ${this.activeSemester}학기] 학급 시간표 엑셀이 다운로드됩니다.`);
     });
 

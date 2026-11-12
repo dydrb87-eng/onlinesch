@@ -982,9 +982,8 @@ class TimetableApp {
 
     // 6. 기준 학생명부 및 통합 엑셀 업로드 이벤트 분리
     document.getElementById('step1-file-upload-master-roster')?.addEventListener('change', async (e) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        await this.handleMasterRosterUpload(file);
+      if (e.target.files && e.target.files.length > 0) {
+        await this.handleMasterRosterUpload(e.target.files);
       }
       e.target.value = '';
     });
@@ -2753,40 +2752,93 @@ class TimetableApp {
     }
   }
 
+    // ==========================================
+  // [1-A. 기준 학생명부 (무결한 마스터 풀) 드래그앤드롭 & 다중 파일 업로드]
   // ==========================================
-  // [1-A. 기준 학생명부 (무결한 마스터 풀) 전용 업로드]
-  // ==========================================
-  async handleMasterRosterUpload(file) {
-    if (!file) return;
+  handleMasterRosterDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zone = document.getElementById('master-roster-drop-zone');
+    if (zone) {
+      zone.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-100/90', 'border-indigo-400');
+    }
+  }
+
+  handleMasterRosterDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zone = document.getElementById('master-roster-drop-zone');
+    if (zone) {
+      zone.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-100/90', 'border-indigo-400');
+    }
+  }
+
+  async handleMasterRosterDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zone = document.getElementById('master-roster-drop-zone');
+    if (zone) {
+      zone.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-100/90', 'border-indigo-400');
+    }
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      await this.handleMasterRosterUpload(files);
+    }
+  }
+
+  async handleMasterRosterUpload(filesInput) {
+    if (!filesInput) return;
+    const fileList = Array.isArray(filesInput) 
+      ? filesInput 
+      : (filesInput instanceof FileList ? Array.from(filesInput) : [filesInput]);
+    if (fileList.length === 0) return;
 
     try {
-      const parsed = await ExcelService.parseStudentExcel(file);
-      if (!parsed || parsed.length === 0) {
-        alert('학생명부 파일에서 학생 데이터를 찾을 수 없습니다.');
-        return;
-      }
+      this.pushUndoSnapshot(`기준 학생명부 업로드 (${fileList.length}개 파일)`);
 
-      // 1. 실행 취소 스냅샷 저장
-      this.pushUndoSnapshot('기준 학생명부 등록');
-
-      // 2. 무결한 마스터 풀로 등록 (성명 & 학번 기준 중복 제거)
       const rosterMap = new Map();
-      parsed.forEach(st => {
+      // 기존 등록된 풀이 있다면 유지하면서 누적 병합
+      (this.excelStudentPool || []).forEach(st => {
         const code = st.studentCode || ExcelService.getStudentCode(st);
         const key = `${code}_${st.name}`;
-        rosterMap.set(key, {
-          grade: st.grade,
-          classNum: st.classNum,
-          studentNum: st.studentNum,
-          studentCode: code,
-          name: st.name
-        });
+        rosterMap.set(key, { ...st });
       });
+
+      let totalParsed = 0;
+      let successFiles = 0;
+
+      for (const file of fileList) {
+        try {
+          const parsed = await ExcelService.parseStudentExcel(file);
+          if (parsed && parsed.length > 0) {
+            parsed.forEach(st => {
+              const code = st.studentCode || ExcelService.getStudentCode(st);
+              const key = `${code}_${st.name}`;
+              rosterMap.set(key, {
+                grade: st.grade,
+                classNum: st.classNum,
+                studentNum: st.studentNum,
+                studentCode: code,
+                name: st.name
+              });
+              totalParsed++;
+            });
+            successFiles++;
+          }
+        } catch (fileErr) {
+          console.warn(`학생명부 파일(${file.name}) 처리 실패:`, fileErr);
+        }
+      }
+
+      if (successFiles === 0 || rosterMap.size === 0) {
+        alert('선택한 파일(들)에서 학생 명단 데이터를 찾을 수 없습니다.');
+        return;
+      }
 
       this.excelStudentPool = Array.from(rosterMap.values());
       this.saveExcelStudentPool();
 
-      // 3. 현재 학기의 masterStudents와도 동기화
+      // 현재 학기의 masterStudents와도 동기화
       if (!this.masterStudents || this.masterStudents.length === 0) {
         this.masterStudents = this.excelStudentPool.map(s => ({
           id: `sm_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -2797,7 +2849,6 @@ class TimetableApp {
           name: s.name
         }));
       } else {
-        // 이미 등록된 학생들의 학적을 무결한 명부 정보로 최신화
         this.masterStudents.forEach(ms => {
           const matched = this.excelStudentPool.find(p => p.name === ms.name);
           if (matched) {
@@ -2813,9 +2864,8 @@ class TimetableApp {
       this.saveState();
       this.render();
 
-      this.showToast(`🛡️ 무결한 기준 학생명부(${this.excelStudentPool.length}명) 등록 완료! 앞으로 업로드되는 모든 시간표 엑셀의 기준 데이터로 영구 유지됩니다.`, true);
+      this.showToast(`🛡️ 기준 학생명부 ${successFiles}개 파일(총 ${this.excelStudentPool.length}명) 등록 완료! 모든 수강 편제의 기준 데이터로 안전하게 유지됩니다.`, true);
 
-      // 검색창에 포커스
       const searchInput = document.getElementById('input-search-student-pool');
       if (searchInput) searchInput.focus();
     } catch (err) {

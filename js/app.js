@@ -31,6 +31,7 @@ class TimetableApp {
     this.periods = [];
     this.days = [];
     this.masterStudents = []; // [{ id, grade, classNum, studentNum, studentCode, name }]
+    this.changeHistory = []; // [{ id, year, semester, date, subject, changeType, subType, studentName, memo, createdAt }]
     this.courseEnrollments = {}; // { [subjectName]: [studentId, ...] }
     this.courseSchedules = {}; // { [subjectName]: [{ id, day, periodId, status }, ...] }
     this.excludedSchedulesBackup = {}; // 제외 처리 시 기존 시간표 배치 임시 보관
@@ -103,6 +104,7 @@ class TimetableApp {
       periods: basePeriods ? JSON.parse(JSON.stringify(basePeriods)) : JSON.parse(JSON.stringify(DEFAULT_PERIODS)),
       days: baseDays ? JSON.parse(JSON.stringify(baseDays)) : JSON.parse(JSON.stringify(DEFAULT_DAYS)),
       masterStudents: [],
+      changeHistory: [],
       courseEnrollments: {},
       courseSchedules: {},
       courseStatus: {},
@@ -241,6 +243,7 @@ class TimetableApp {
     this.periods = d.periods;
     this.days = d.days;
     this.masterStudents = d.masterStudents || [];
+    this.changeHistory = d.changeHistory || [];
     this.courseEnrollments = d.courseEnrollments || {};
     this.courseStatus = d.courseStatus || {};
     this.excludedSchedulesBackup = d.excludedSchedulesBackup || {};
@@ -311,6 +314,7 @@ class TimetableApp {
       periods: this.periods,
       days: this.days,
       masterStudents: this.masterStudents,
+      changeHistory: this.changeHistory || [],
       courseEnrollments: this.courseEnrollments,
       courseSchedules: this.courseSchedules,
       courseStatus: this.courseStatus || {},
@@ -467,10 +471,12 @@ class TimetableApp {
         activeSemester: this.activeSemester,
         academicYears: this.academicYears,
         yearsData: this.yearsData,
+        changeHistory: this.changeHistory || [],
         periods: this.periods,
         days: this.days,
         students: this.students,
         masterStudents: this.masterStudents,
+        changeHistory: this.changeHistory || [],
         courseEnrollments: this.courseEnrollments,
         courseSchedules: this.courseSchedules,
         courseStatus: this.courseStatus || {},
@@ -1906,6 +1912,7 @@ class TimetableApp {
       this.jsonUpdatedTime = now.toISOString();
       this.jsonFileName = fileName;
       this.updateTitleJsonVersionUI();
+    this.updateChangeHistoryBadge();
       const jsonStr = JSON.stringify(exportData, null, 2);
 
       if (window.FileStorageService && typeof window.FileStorageService.saveFile === 'function') {
@@ -4593,6 +4600,356 @@ class TimetableApp {
       const dropdown = document.getElementById(`bucket-search-dropdown-${safeSub}`);
       if (dropdown) dropdown.classList.add('hidden');
     }
+  }
+
+  // ==========================================
+  // [과목 및 시간표 변경 내역 관리 모달 & 기능]
+  // ==========================================
+  updateChangeHistoryBadge() {
+    const badge = document.getElementById('badge-change-history-count');
+    if (!badge) return;
+    const count = (this.changeHistory || []).length;
+    badge.textContent = String(count);
+  }
+
+  openChangeHistoryModal() {
+    const modal = document.getElementById('modal-change-history');
+    if (!modal) return;
+
+    // 1. 현재 학년도 및 학기 뱃지
+    const termBadge = document.getElementById('change-history-term-badge');
+    if (termBadge) {
+      termBadge.textContent = `${this.activeYear}학년도 ${this.activeSemester}학기`;
+    }
+
+    // 2. 오늘 날짜 기본 세팅 (YYYY-MM-DD)
+    const dateInput = document.getElementById('change-history-date');
+    if (dateInput && !dateInput.value) {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      dateInput.value = `${yyyy}-${mm}-${dd}`;
+    }
+
+    // 3. 과목 선택 드롭다운 채우기
+    const subSelect = document.getElementById('change-history-subject');
+    const filterSubSelect = document.getElementById('change-history-filter-subject');
+
+    const subs = (this.offeredSubjects || []).filter(Boolean);
+
+    if (subSelect) {
+      let optionsHtml = '<option value="">-- 과목 선택 --</option>';
+      subs.forEach(s => {
+        optionsHtml += `<option value="${s}">${s}</option>`;
+      });
+      subSelect.innerHTML = optionsHtml;
+    }
+
+    if (filterSubSelect) {
+      let filterOptionsHtml = '<option value="all">전체 과목</option>';
+      subs.forEach(s => {
+        filterOptionsHtml += `<option value="${s}">${s}</option>`;
+      });
+      filterSubSelect.innerHTML = filterOptionsHtml;
+    }
+
+    // 4. 변경 내용 기본값 및 학생 필드 초기화
+    const typeSelect = document.getElementById('change-history-type');
+    if (typeSelect) {
+      typeSelect.value = '시간 조정';
+      this.handleChangeHistoryTypeChange('시간 조정');
+    }
+
+    const studentNameInput = document.getElementById('change-history-student-name');
+    if (studentNameInput) studentNameInput.value = '';
+
+    const memoInput = document.getElementById('change-history-memo');
+    if (memoInput) memoInput.value = '';
+
+    // 5. 목록 렌더링
+    this.renderChangeHistoryList();
+
+    // 6. 모달 표시
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  closeChangeHistoryModal() {
+    const modal = document.getElementById('modal-change-history');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  }
+
+  handleChangeHistoryTypeChange(typeVal) {
+    const studentFields = document.getElementById('change-history-student-fields');
+    if (!studentFields) return;
+
+    if (typeVal === '학생 변경') {
+      studentFields.classList.remove('hidden');
+      const nameInput = document.getElementById('change-history-student-name');
+      if (nameInput) setTimeout(() => nameInput.focus(), 60);
+    } else {
+      studentFields.classList.add('hidden');
+    }
+  }
+
+  handleChangeHistoryStudentInput(query) {
+    const q = (query || '').trim().toLowerCase();
+    const dropdown = document.getElementById('change-history-student-dropdown');
+    if (!dropdown) return;
+
+    if (!q) {
+      dropdown.classList.add('hidden');
+      dropdown.innerHTML = '';
+      return;
+    }
+
+    // 현재 masterStudents 및 excelStudentPool에서 후보 탐색
+    const candidates = [];
+    const seen = new Set();
+
+    (this.masterStudents || []).forEach(s => {
+      const name = (s.name || '').toLowerCase();
+      const code = (s.studentCode || '').toLowerCase();
+      if ((name.includes(q) || code.includes(q)) && !seen.has(s.name)) {
+        candidates.push(s);
+        seen.add(s.name);
+      }
+    });
+
+    (this.excelStudentPool || []).forEach(s => {
+      const name = (s.name || '').toLowerCase();
+      const code = (s.studentCode || '').toLowerCase();
+      if ((name.includes(q) || code.includes(q)) && !seen.has(s.name)) {
+        candidates.push(s);
+        seen.add(s.name);
+      }
+    });
+
+    if (candidates.length === 0) {
+      dropdown.classList.add('hidden');
+      dropdown.innerHTML = '';
+      return;
+    }
+
+    dropdown.innerHTML = candidates.slice(0, 5).map(s => {
+      const code = s.studentCode || ExcelService.getStudentCode(s);
+      const safeName = (s.name || '').replace(/'/g, "\\'");
+      return `
+        <div class="px-3 py-1.5 hover:bg-amber-50 cursor-pointer flex items-center justify-between text-xs"
+             onclick="document.getElementById('change-history-student-name').value = '${safeName}'; document.getElementById('change-history-student-dropdown').classList.add('hidden');">
+          <div class="flex items-center gap-1.5">
+            <span class="font-mono text-[10px] text-slate-500">${code}</span>
+            <span class="font-bold text-slate-800">${s.name}</span>
+          </div>
+          <span class="text-[10px] text-amber-700 font-semibold">선택</span>
+        </div>
+      `;
+    }).join('');
+
+    dropdown.classList.remove('hidden');
+  }
+
+  handleAddChangeHistoryItem() {
+    const dateInput = document.getElementById('change-history-date');
+    const subSelect = document.getElementById('change-history-subject');
+    const typeSelect = document.getElementById('change-history-type');
+    const memoInput = document.getElementById('change-history-memo');
+    const studentNameInput = document.getElementById('change-history-student-name');
+    const subTypeRadio = document.querySelector('input[name="change-history-subtype"]:checked');
+
+    const subject = subSelect ? subSelect.value.trim() : '';
+    if (!subject) {
+      alert('과목을 선택해주세요.');
+      if (subSelect) subSelect.focus();
+      return;
+    }
+
+    const changeType = typeSelect ? typeSelect.value : '시간 조정';
+    let subType = null;
+    let studentName = '';
+
+    if (changeType === '학생 변경') {
+      subType = subTypeRadio ? subTypeRadio.value : '참여';
+      studentName = studentNameInput ? studentNameInput.value.trim() : '';
+      if (!studentName) {
+        alert('학생명을 입력해주세요.');
+        if (studentNameInput) studentNameInput.focus();
+        return;
+      }
+    }
+
+    const dateVal = (dateInput && dateInput.value) ? dateInput.value : new Date().toISOString().split('T')[0];
+    const memoVal = memoInput ? memoInput.value.trim() : '';
+
+    const newItem = {
+      id: `ch_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      year: this.activeYear,
+      semester: this.activeSemester,
+      date: dateVal,
+      subject: subject,
+      changeType: changeType,
+      subType: subType,
+      studentName: studentName,
+      memo: memoVal,
+      createdAt: new Date().toISOString()
+    };
+
+    this.pushUndoSnapshot(`변경 내역 추가 (${subject} - ${changeType})`);
+
+    if (!this.changeHistory) this.changeHistory = [];
+    this.changeHistory.unshift(newItem);
+
+    this.saveActiveYearSemesterData();
+    this.saveState();
+    this.renderChangeHistoryList();
+    this.updateChangeHistoryBadge();
+
+    // 폼 정리
+    if (studentNameInput) studentNameInput.value = '';
+    if (memoInput) memoInput.value = '';
+
+    const dropdown = document.getElementById('change-history-student-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+
+    this.showToast(`'${subject}' 변경 내역 항목이 등록되었습니다.`, true);
+  }
+
+  handleDeleteChangeHistoryItem(itemId) {
+    if (!confirm('이 변경 내역 항목을 삭제하시겠습니까?')) return;
+
+    this.pushUndoSnapshot('변경 내역 항목 삭제');
+
+    this.changeHistory = (this.changeHistory || []).filter(item => item.id !== itemId);
+    this.saveActiveYearSemesterData();
+    this.saveState();
+    this.renderChangeHistoryList();
+    this.updateChangeHistoryBadge();
+    this.showToast('변경 내역 항목이 삭제되었습니다.', true);
+  }
+
+  renderChangeHistoryList() {
+    const tbody = document.getElementById('change-history-table-body');
+    const countBadge = document.getElementById('change-history-table-count');
+    const filterTypeEl = document.getElementById('change-history-filter-type');
+    const filterSubEl = document.getElementById('change-history-filter-subject');
+    if (!tbody) return;
+
+    const filterType = filterTypeEl ? filterTypeEl.value : 'all';
+    const filterSub = filterSubEl ? filterSubEl.value : 'all';
+
+    let list = this.changeHistory || [];
+
+    if (filterType !== 'all') {
+      list = list.filter(item => item.changeType === filterType);
+    }
+    if (filterSub !== 'all') {
+      list = list.filter(item => item.subject === filterSub);
+    }
+
+    if (countBadge) {
+      countBadge.textContent = `${list.length}건`;
+    }
+
+    if (list.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="py-12 text-center text-slate-400 italic">
+            등록된 변경 내역이 없습니다. 상단 폼에서 새 항목을 추가해보세요.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = list.map((item, idx) => {
+      // 뱃지 디자인
+      let typeBadge = '';
+      if (item.changeType === '시간 조정') {
+        typeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">🕒 시간 조정</span>';
+      } else if (item.changeType === '학생 변경') {
+        if (item.subType === '참여') {
+          typeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">🟢 참여 (추가)</span>';
+        } else {
+          typeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">🔴 취소 (철회)</span>';
+        }
+      } else {
+        typeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300">📝 기타</span>';
+      }
+
+      // 상세 내용 텍스트
+      let contentText = '';
+      if (item.changeType === '학생 변경') {
+        contentText = `
+          <span class="font-bold text-slate-900">${item.studentName || '-'}</span> 
+          <span class="text-slate-600">수강 ${item.subType || '변경'}</span>
+          ${item.memo ? `<span class="text-slate-400 ml-1.5 font-normal">(${item.memo})</span>` : ''}
+        `;
+      } else {
+        contentText = item.memo ? `<span class="text-slate-800">${item.memo}</span>` : '<span class="text-slate-400 italic">-</span>';
+      }
+
+      const termText = item.year && item.semester ? `${item.year}년 ${item.semester}학기` : '-';
+
+      return `
+        <tr class="hover:bg-slate-50/80 transition">
+          <td class="py-2.5 px-3 text-center text-slate-400 font-mono">${idx + 1}</td>
+          <td class="py-2.5 px-3 font-mono text-slate-600 font-medium">${item.date || '-'}</td>
+          <td class="py-2.5 px-3 text-slate-600 text-[11px] font-semibold">${termText}</td>
+          <td class="py-2.5 px-3 font-bold text-indigo-950">${item.subject || '-'}</td>
+          <td class="py-2.5 px-3">${typeBadge}</td>
+          <td class="py-2.5 px-3">${contentText}</td>
+          <td class="py-2.5 px-3 text-center">
+            <button type="button" onclick="window.app.handleDeleteChangeHistoryItem('${item.id}')"
+                    class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                    title="삭제">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  exportChangeHistoryExcel() {
+    const list = this.changeHistory || [];
+    if (list.length === 0) {
+      alert('출력할 변경 내역이 없습니다.');
+      return;
+    }
+
+    if (typeof XLSX === 'undefined') {
+      alert('엑셀 라이브러리(SheetJS)가 로드되지 않았습니다.');
+      return;
+    }
+
+    const rows = list.map((item, idx) => ({
+      '연번': idx + 1,
+      '변경 일자': item.date || '',
+      '학년도': item.year || '',
+      '학기': item.semester ? `${item.semester}학기` : '',
+      '과목명': item.subject || '',
+      '변경 구분': item.changeType || '',
+      '학생 구분': item.subType || '',
+      '학생명': item.studentName || '',
+      '세부 내용 / 사유': item.memo || '',
+      '등록 일시': item.createdAt ? item.createdAt.replace('T', ' ').substring(0, 19) : ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '변경내역');
+
+    const fileName = `[${this.activeYear}학년도_${this.activeSemester}학기]_시간표_및_과목_변경내역.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    this.showToast(`변경 내역 엑셀 파일이 다운로드되었습니다: ${fileName}`);
   }
 
   scrollToBucket(subjectName) {

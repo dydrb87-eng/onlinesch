@@ -572,7 +572,7 @@ const ExcelService = {
   },
 
   // 5. 결괏값 형태 1: 학급 시간표 형태 (파스텔톤 디자인 멀티시트 엑셀)
-  async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교', courseEnrollments = null, masterStudents = null, courseStatus = null) {
+  async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교', courseEnrollments = null, masterStudents = null, courseStatus = null, yearData = null) {
     const workbook = new ExcelJS.Workbook();
     const yearLabel = `${academicYear}학년도 ${semester}학기`;
     const filePrefix = `${academicYear}학년도_${semester}학기_${schoolName}`;
@@ -743,11 +743,331 @@ const ExcelService = {
       });
     });
 
+    // 5-4. [신규 탭] 1,2학기 통합시간표 시트 생성 (1학기/2학기 다운로드 무관 항상 포함)
+    if (yearData && typeof yearData === 'object') {
+      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true }] });
+      this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData);
+    }
+
     const buffer = await workbook.xlsx.writeBuffer();
     this.saveFile(buffer, `${filePrefix}_학급_시간표_${this.getTimestamp()}.xlsx`);
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
+  // =========================================================================
+  // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
+  // 월화수목금 각 4개 열 (1학기 2개열: 과목명/학번학생명, 2학기 2개열: 과목명/학번학생명)
+  // 과목명 동일 시 세로 셀 병합, 왼쪽 정렬, 들여쓰기 1 적용
+  // =========================================================================
+  buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData) {
+    const sem1Data = (yearData && yearData['1']) || {};
+    const sem2Data = (yearData && yearData['2']) || {};
+
+    const targetDays = [
+      { id: 'mon', name: '월요일' },
+      { id: 'tue', name: '화요일' },
+      { id: 'wed', name: '수요일' },
+      { id: 'thu', name: '목요일' },
+      { id: 'fri', name: '금요일' }
+    ];
+
+    // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열)
+    const columnsConfig = [
+      { width: 14 } // A: 교시
+    ];
+    targetDays.forEach(() => {
+      columnsConfig.push({ width: 19 }); // 1학기 과목명
+      columnsConfig.push({ width: 16 }); // 1학기 학번학생명
+      columnsConfig.push({ width: 19 }); // 2학기 과목명
+      columnsConfig.push({ width: 16 }); // 2학기 학번학생명
+    });
+    sheet.columns = columnsConfig;
+
+    // 1행: 타이틀 (A1:U1 병합)
+    sheet.mergeCells(1, 1, 1, 21);
+    const titleCell = sheet.getCell(1, 1);
+    titleCell.value = `${academicYear}학년도 ${schoolName} 1·2학기 통합시간표`;
+    titleCell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF1E293B' } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    sheet.getRow(1).height = 42;
+
+    // 2행: 요일 대분류 헤더 (A열 교시, 각 요일 4개열씩 병합)
+    const row2 = sheet.getRow(2);
+    row2.height = 28;
+    targetDays.forEach((day, idx) => {
+      const startCol = 2 + idx * 4;
+      const endCol = startCol + 3;
+      sheet.mergeCells(2, startCol, 2, endCol);
+      const dayCell = sheet.getCell(2, startCol);
+      dayCell.value = day.name;
+      dayCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+      dayCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      for (let c = startCol; c <= endCol; c++) {
+        const cell = sheet.getCell(2, c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+        this.applyBorder(cell);
+      }
+    });
+
+    // 3행: 학기 중분류 헤더 (1학기 2개열, 2학기 2개열 병합)
+    const row3 = sheet.getRow(3);
+    row3.height = 24;
+    targetDays.forEach((day, idx) => {
+      const colSem1 = 2 + idx * 4;
+      const colSem2 = colSem1 + 2;
+
+      // 1학기 헤더 (2개 열 병합)
+      sheet.mergeCells(3, colSem1, 3, colSem1 + 1);
+      const sem1Cell = sheet.getCell(3, colSem1);
+      sem1Cell.value = '1학기';
+      sem1Cell.font = { name: '맑은 고딕', size: 10.5, bold: true, color: { argb: 'FF1D4ED8' } };
+      sem1Cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      for (let c = colSem1; c <= colSem1 + 1; c++) {
+        const cell = sheet.getCell(3, c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+        this.applyBorder(cell);
+      }
+
+      // 2학기 헤더 (2개 열 병합)
+      sheet.mergeCells(3, colSem2, 3, colSem2 + 1);
+      const sem2Cell = sheet.getCell(3, colSem2);
+      sem2Cell.value = '2학기';
+      sem2Cell.font = { name: '맑은 고딕', size: 10.5, bold: true, color: { argb: 'FF047857' } };
+      sem2Cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      for (let c = colSem2; c <= colSem2 + 1; c++) {
+        const cell = sheet.getCell(3, c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+        this.applyBorder(cell);
+      }
+    });
+
+    // 4행: 소분류 컬럼명 헤더 (A4: 교시, 과목명, 학번 학생명 반복)
+    const row4 = sheet.getRow(4);
+    row4.height = 24;
+    targetDays.forEach((day, idx) => {
+      const startCol = 2 + idx * 4;
+      const sub1 = sheet.getCell(4, startCol);
+      sub1.value = '과목명';
+      const st1 = sheet.getCell(4, startCol + 1);
+      st1.value = '학번 학생명';
+
+      const sub2 = sheet.getCell(4, startCol + 2);
+      sub2.value = '과목명';
+      const st2 = sheet.getCell(4, startCol + 3);
+      st2.value = '학번 학생명';
+
+      for (let c = startCol; c <= startCol + 3; c++) {
+        const cell = sheet.getCell(4, c);
+        cell.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF334155' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        this.applyBorder(cell);
+      }
+    });
+
+    // A열 교시 헤더 병합 (A2:A4)
+    sheet.mergeCells(2, 1, 4, 1);
+    const periodHeaderCell = sheet.getCell(2, 1);
+    periodHeaderCell.value = '교시 / 시간';
+    periodHeaderCell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF1E293B' } };
+    periodHeaderCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    for (let r = 2; r <= 4; r++) {
+      const cell = sheet.getCell(r, 1);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      this.applyBorder(cell);
+    }
+
+    // 데이터 추출 헬퍼 맵
+    const masterMap1 = new Map((sem1Data.masterStudents || []).map(s => [s.id, s]));
+    const masterMap2 = new Map((sem2Data.masterStudents || []).map(s => [s.id, s]));
+
+    const enrollments1 = sem1Data.courseEnrollments || {};
+    const enrollments2 = sem2Data.courseEnrollments || {};
+
+    const schedules1 = sem1Data.courseSchedules || {};
+    const schedules2 = sem2Data.courseSchedules || {};
+
+    const statusMap1 = sem1Data.courseStatus || {};
+    const statusMap2 = sem2Data.courseStatus || {};
+
+    // 특정 학기, 특정 요일, 특정 교시에 개설된 과목 및 수강생 행 목록 추출 함수
+    const getSlotItems = (schedMap, enrollMap, masterMap, statMap, dayId, periodObj) => {
+      const items = [];
+      const scheduledSubjects = [];
+
+      Object.entries(schedMap).forEach(([sub, scheds]) => {
+        if (!Array.isArray(scheds)) return;
+        const st = statMap[sub] || 'open';
+        if (st === 'closed' || st === 'excluded') return; // 폐강/제외 과목 제외
+
+        const hasSlot = scheds.some(sch => {
+          if (sch.status === 'canceled') return false;
+          return sch.day === dayId && (sch.periodId === periodObj.id || (!sch.periodId && sch.period === periodObj.period));
+        });
+
+        if (hasSlot) {
+          scheduledSubjects.push(sub);
+        }
+      });
+
+      // 과목명 가나다순 정렬
+      scheduledSubjects.sort((a, b) => a.localeCompare(b, 'ko'));
+
+      scheduledSubjects.forEach(sub => {
+        const studentIds = enrollMap[sub] || [];
+        const studentsInSub = [];
+        studentIds.forEach(id => {
+          const m = masterMap.get(id);
+          if (m) {
+            const code = m.studentCode || this.getStudentCode(m);
+            studentsInSub.push({ code, name: m.name, sortCode: code || '' });
+          }
+        });
+
+        // 학생 학번순 정렬
+        studentsInSub.sort((a, b) => a.sortCode.localeCompare(b.sortCode, 'ko', { numeric: true }));
+
+        if (studentsInSub.length === 0) {
+          items.push({ subject: sub, studentText: '' });
+        } else {
+          studentsInSub.forEach(st => {
+            items.push({
+              subject: sub,
+              studentText: `${st.code} ${st.name}`.trim()
+            });
+          });
+        }
+      });
+
+      return items;
+    };
+
+    // 정규 수업 교시 목록 순회
+    const regularPeriods = (periods || []).filter(p => !p.isBreak);
+    let currentRow = 5;
+
+    regularPeriods.forEach((period) => {
+      // 5개 요일별 1학기/2학기 데이터 추출
+      const daySlotsData = targetDays.map(day => {
+        const items1 = getSlotItems(schedules1, enrollments1, masterMap1, statusMap1, day.id, period);
+        const items2 = getSlotItems(schedules2, enrollments2, masterMap2, statusMap2, day.id, period);
+        return { day, items1, items2 };
+      });
+
+      // 이 교시 블록의 최대 행 수 계산
+      let maxBlockRows = 1;
+      daySlotsData.forEach(d => {
+        const count = Math.max(d.items1.length, d.items2.length);
+        if (count > maxBlockRows) maxBlockRows = count;
+      });
+
+      const blockStartRow = currentRow;
+      const blockEndRow = blockStartRow + maxBlockRows - 1;
+
+      // 행 높이 설정
+      for (let r = blockStartRow; r <= blockEndRow; r++) {
+        sheet.getRow(r).height = 23;
+      }
+
+      // 교시 (A열) 세로 병합
+      if (blockEndRow > blockStartRow) {
+        sheet.mergeCells(blockStartRow, 1, blockEndRow, 1);
+      }
+      const periodCell = sheet.getCell(blockStartRow, 1);
+      periodCell.value = `${period.name}\n(${period.startTime}~${period.endTime})`;
+      periodCell.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+      periodCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+      for (let r = blockStartRow; r <= blockEndRow; r++) {
+        const cell = sheet.getCell(r, 1);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        this.applyBorder(cell);
+      }
+
+      // 각 요일별 열 채우기 및 동일 과목명 병합
+      daySlotsData.forEach((d, dayIdx) => {
+        const colSub1 = 2 + dayIdx * 4;
+        const colSt1 = colSub1 + 1;
+        const colSub2 = colSub1 + 2;
+        const colSt2 = colSub2 + 1;
+
+        // --- 1학기 데이터 입력 ---
+        for (let i = 0; i < maxBlockRows; i++) {
+          const r = blockStartRow + i;
+          const item = d.items1[i];
+          const cSub = sheet.getCell(r, colSub1);
+          const cSt = sheet.getCell(r, colSt1);
+
+          cSub.value = item ? item.subject : '';
+          cSt.value = item ? item.studentText : '';
+
+          // 왼쪽 정렬 + 들여쓰기 1
+          cSub.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+          cSub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+          cSt.font = { name: '맑은 고딕', size: 9.5, color: { argb: 'FF334155' } };
+          cSt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+          this.applyBorder(cSub);
+          this.applyBorder(cSt);
+        }
+
+        // 1학기 동일 과목명 세로 병합
+        if (d.items1.length > 1) {
+          let spanStart = 0;
+          while (spanStart < d.items1.length) {
+            let spanEnd = spanStart;
+            while (spanEnd + 1 < d.items1.length && d.items1[spanEnd + 1].subject === d.items1[spanStart].subject) {
+              spanEnd++;
+            }
+            if (spanEnd > spanStart) {
+              sheet.mergeCells(blockStartRow + spanStart, colSub1, blockStartRow + spanEnd, colSub1);
+            }
+            spanStart = spanEnd + 1;
+          }
+        }
+
+        // --- 2학기 데이터 입력 ---
+        for (let i = 0; i < maxBlockRows; i++) {
+          const r = blockStartRow + i;
+          const item = d.items2[i];
+          const cSub = sheet.getCell(r, colSub2);
+          const cSt = sheet.getCell(r, colSt2);
+
+          cSub.value = item ? item.subject : '';
+          cSt.value = item ? item.studentText : '';
+
+          // 왼쪽 정렬 + 들여쓰기 1
+          cSub.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+          cSub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+          cSt.font = { name: '맑은 고딕', size: 9.5, color: { argb: 'FF334155' } };
+          cSt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+          this.applyBorder(cSub);
+          this.applyBorder(cSt);
+        }
+
+        // 2학기 동일 과목명 세로 병합
+        if (d.items2.length > 1) {
+          let spanStart = 0;
+          while (spanStart < d.items2.length) {
+            let spanEnd = spanStart;
+            while (spanEnd + 1 < d.items2.length && d.items2[spanEnd + 1].subject === d.items2[spanStart].subject) {
+              spanEnd++;
+            }
+            if (spanEnd > spanStart) {
+              sheet.mergeCells(blockStartRow + spanStart, colSub2, blockStartRow + spanEnd, colSub2);
+            }
+            spanStart = spanEnd + 1;
+          }
+        }
+      });
+
+      currentRow = blockEndRow + 1;
+    });
+  },
+
   buildTimetableSheet(sheet, periods, days, studentList, subjectColorMap, titleText) {
     sheet.columns = [
       { width: 22 },

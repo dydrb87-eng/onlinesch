@@ -632,8 +632,8 @@ const ExcelService = {
       );
     }
 
-    // 5-2. [수강자 전체 명단] 시트 구성 (1,2학기 구분 없이 전체 대상, 정렬: 학기 -> 과목명 -> 학번 -> 이름)
-    const rosterSheet = workbook.addWorksheet('수강자 전체 명단', { views: [{ showGridLines: true }] });
+    // 5-2. [전체 수강신청 내역] 시트 구성 (1,2학기 구분 없이 전체 대상)
+    const rosterSheet = workbook.addWorksheet('전체 수강신청 내역', { views: [{ showGridLines: true }] });
     rosterSheet.columns = [
       { header: '학년도', key: 'academicYear', width: 14 },
       { header: '학기', key: 'semester', width: 11 },
@@ -759,21 +759,32 @@ const ExcelService = {
       }
     }
 
-    // ★ 정렬 우선순위: 1순위 학기, 2순위 과목명, 3순위 학번, 4순위 이름 순서
+    // ★ 정렬 우선순위: 1순위 상태(개설 -> 조정 -> 폐강), 2순위 학기(1학기 -> 2학기), 3순위 과목명(가나다), 4순위 학번(오름차순)
+    const getStatusPriority = (st) => {
+      if (st === '개설') return 1;
+      if (st === '조정') return 2;
+      if (st === '폐강') return 3;
+      return 4;
+    };
+
     rosterRows.sort((a, b) => {
-      // 1순위: 학기 (1학기 -> 2학기)
+      // 1순위: 상태 (개설 -> 조정 -> 폐강)
+      const stComp = getStatusPriority(a.statusText) - getStatusPriority(b.statusText);
+      if (stComp !== 0) return stComp;
+
+      // 2순위: 학기 (1학기 -> 2학기)
       const semComp = (a.semester || '').localeCompare(b.semester || '', 'ko', { numeric: true });
       if (semComp !== 0) return semComp;
 
-      // 2순위: 과목명 (가나다순)
+      // 3순위: 과목명 (가나다순)
       const subComp = (a.subject || '').localeCompare(b.subject || '', 'ko');
       if (subComp !== 0) return subComp;
 
-      // 3순위: 학번 (오름차순)
+      // 4순위: 학번 (오름차순)
       const codeComp = (a.studentCode || '').localeCompare(b.studentCode || '', 'ko', { numeric: true });
       if (codeComp !== 0) return codeComp;
 
-      // 4순위: 이름 (가나다순)
+      // 5순위: 이름 (가나다순)
       return (a.studentName || '').localeCompare(b.studentName || '', 'ko');
     });
 
@@ -790,25 +801,43 @@ const ExcelService = {
       row.height = 24;
       const isEven = idx % 2 === 1;
 
-      row.eachCell((cell, colNum) => {
-        cell.font = { name: '맑은 고딕', size: 10, color: { argb: 'FF1E293B' } };
-        cell.alignment = { vertical: 'middle', horizontal: colNum === 3 ? 'left' : 'center' };
+      const isCanceled = rData.statusText === '폐강';
+      const isOpen = rData.statusText === '개설';
 
-        // 6열: 개설/조정/폐강 상태별 텍스트 색상
-        if (colNum === 6) {
-          if (rData.statusText === '개설') {
-            cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FF059669' } }; // 진한 초록
-          } else if (rData.statusText === '조정') {
-            cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FFD97706' } }; // 진한 주황/노랑
-          } else if (rData.statusText === '폐강') {
-            cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FFDC2626' } }; // 진한 빨강
-          }
+      row.eachCell((cell, colNum) => {
+        let cellColor = isCanceled ? 'FF94A3B8' : 'FF1E293B';
+        let cellStrike = isCanceled;
+        let cellBold = false;
+        let fillBgColor = isEven ? 'FFF8FAFC' : 'FFFFFFFF';
+
+        if (isCanceled) {
+          // 폐강인 경우: 데이터 행 전체 회색 채우기 + 취소선
+          fillBgColor = 'FFE2E8F0';
+        } else if (isOpen) {
+          // 개설인 경우: 데이터 행 전체 노란색 채우기
+          fillBgColor = 'FFFEF9C3'; // 부드럽고 가독성 높은 파스텔 옐로우
         }
 
+        // 6열 상태 텍스트 색상
+        if (colNum === 6) {
+          cellBold = true;
+          if (rData.statusText === '개설') cellColor = 'FF059669'; // 진한 초록
+          else if (rData.statusText === '조정') cellColor = 'FFD97706'; // 진한 주황
+          else if (rData.statusText === '폐강') cellColor = 'FFDC2626'; // 진한 빨강
+        }
+
+        cell.font = {
+          name: '맑은 고딕',
+          size: 10,
+          bold: cellBold,
+          strike: cellStrike,
+          color: { argb: cellColor }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: colNum === 3 ? 'left' : 'center' };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' }
+          fgColor: { argb: fillBgColor }
         };
         this.applyBorder(cell);
       });
@@ -1134,10 +1163,10 @@ const ExcelService = {
             });
 
             if (stList.length === 0) {
-              items.push({ subject: sub, stId: '', stName: '-', memo });
+              items.push({ subject: sub, stId: '', stName: '-', memo, grade: '', classNum: '' });
             } else {
               stList.forEach(st => {
-                items.push({ subject: sub, stId: st.stId, stName: st.stName, memo });
+                items.push({ subject: sub, stId: st.stId, stName: st.stName, memo, grade: st.grade, classNum: st.classNum });
               });
             }
           });
@@ -1212,10 +1241,10 @@ const ExcelService = {
         });
 
         if (studentItems.length === 0) {
-          items.push({ subject, stId: '', stName: '-', memo });
+          items.push({ subject, stId: '', stName: '-', memo, grade: '', classNum: '' });
         } else {
           studentItems.forEach(st => {
-            items.push({ subject, stId: st.stId, stName: st.stName, memo });
+            items.push({ subject, stId: st.stId, stName: st.stName, memo, grade: st.grade, classNum: st.classNum });
           });
         }
       });
@@ -1326,13 +1355,25 @@ const ExcelService = {
           // (학번) 학생명: 왼쪽 정렬 + 셀에 맞춤(shrinkToFit: true)
           cSt.alignment = { vertical: 'middle', horizontal: 'left', shrinkToFit: true };
 
-          // 폐강 과목인 경우 학생 셀 배경도 회색 처리
+          // 폐강 과목인 경우 학생 셀 배경 회색 처리 / 해당 학급 학생은 노란색 강조 채우기
           if (isCanceled1) {
             cSt.fill = {
               type: 'pattern',
               pattern: 'solid',
               fgColor: { argb: 'FFE2E8F0' }
             };
+          } else if (classFilter && item) {
+            const isTargetStudent = (
+              (String(item.grade) === String(classFilter.grade) && Number(item.classNum) === Number(classFilter.classNum)) ||
+              (item.stId && item.stId.startsWith(`${classFilter.grade}${String(classFilter.classNum).padStart(2, '0')}`))
+            );
+            if (isTargetStudent) {
+              cSt.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFEF08A' } // 밝고 화사한 파스텔 옐로우 (해당 학급 학생 강조)
+              };
+            }
           }
 
           this.applyBorder(cSub);
@@ -1484,12 +1525,25 @@ const ExcelService = {
           // (학번) 학생명: 왼쪽 정렬 + 셀에 맞춤(shrinkToFit: true)
           cSt.alignment = { vertical: 'middle', horizontal: 'left', shrinkToFit: true };
 
+          // 폐강 과목인 경우 학생 셀 배경 회색 처리 / 해당 학급 학생은 노란색 강조 채우기
           if (isCanceled2) {
             cSt.fill = {
               type: 'pattern',
               pattern: 'solid',
               fgColor: { argb: 'FFE2E8F0' }
             };
+          } else if (classFilter && item) {
+            const isTargetStudent = (
+              (String(item.grade) === String(classFilter.grade) && Number(item.classNum) === Number(classFilter.classNum)) ||
+              (item.stId && item.stId.startsWith(`${classFilter.grade}${String(classFilter.classNum).padStart(2, '0')}`))
+            );
+            if (isTargetStudent) {
+              cSt.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFEF08A' } // 밝고 화사한 파스텔 옐로우 (해당 학급 학생 강조)
+              };
+            }
           }
 
           this.applyBorder(cSub);

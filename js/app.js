@@ -1148,7 +1148,7 @@ class TimetableApp {
       this.ensureYearSemesterData(this.activeYear, '2');
       const currentYearData = this.yearsData[this.activeYear] || {};
       const currentNotice = (this.timetableNotices && this.timetableNotices[this.activeYear]) || '';
-      ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '상지대관령고', this.courseEnrollments, this.masterStudents, this.courseStatus, currentYearData, currentNotice);
+      ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '강원온라인학교', this.courseEnrollments, this.masterStudents, this.courseStatus, currentYearData, currentNotice);
       this.showToast(`[${this.activeYear}학년도 ${this.activeSemester}학기] 학급 시간표 엑셀이 다운로드됩니다.`);
     });
 

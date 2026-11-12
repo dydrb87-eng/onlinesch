@@ -844,8 +844,9 @@ const ExcelService = {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    // ★ 다운로드 시 파일명: 2027학년도_강원온라인학교_학급별_시간표_20261112_1745.xlsx
-    const fileName = `${academicYear}학년도_${schoolName}_학급별_시간표_${this.getTimestamp()}.xlsx`;
+    // ★ 다운로드 시 파일명: {academicYear}학년도_강원온라인학교_학급별_시간표_{timestamp}.xlsx
+    const outSchoolName = schoolName || '강원온라인학교';
+    const fileName = `${academicYear}학년도_${outSchoolName}_학급별_시간표_${this.getTimestamp()}.xlsx`;
     this.saveFile(buffer, fileName);
   },
 

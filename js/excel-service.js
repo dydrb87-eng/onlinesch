@@ -814,8 +814,8 @@ const ExcelService = {
           // 폐강인 경우: 데이터 행 전체 회색 채우기 + 취소선
           fillBgColor = 'FFE2E8F0';
         } else if (isOpen) {
-          // 개설인 경우: 데이터 행 전체 노란색 채우기
-          fillBgColor = 'FFFEF9C3'; // 부드럽고 가독성 높은 파스텔 옐로우
+          // 개설인 경우: 데이터 행 전체 노란색 채우기 (엑셀 표준 색 샛노란색 #FFFF00)
+          fillBgColor = 'FFFFFF00';
         }
 
         // 6열 상태 텍스트 색상
@@ -1371,7 +1371,7 @@ const ExcelService = {
               cSt.fill = {
                 type: 'pattern',
                 pattern: 'solid',
-                fgColor: { argb: 'FFFEF08A' } // 밝고 화사한 파스텔 옐로우 (해당 학급 학생 강조)
+                fgColor: { argb: 'FFFFFF00' } // 엑셀 표준 색 샛노란색 (#FFFF00, 해당 학급 학생 강조)
               };
             }
           }
@@ -1541,7 +1541,7 @@ const ExcelService = {
               cSt.fill = {
                 type: 'pattern',
                 pattern: 'solid',
-                fgColor: { argb: 'FFFEF08A' } // 밝고 화사한 파스텔 옐로우 (해당 학급 학생 강조)
+                fgColor: { argb: 'FFFFFF00' } // 엑셀 표준 색 샛노란색 (#FFFF00, 해당 학급 학생 강조)
               };
             }
           }

@@ -4182,13 +4182,40 @@ class TimetableApp {
 
             <!-- 수강 학생 명단 영역 -->
             <div>
-              <div class="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5">
-                <span class="flex items-center gap-1.5">
-                  <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
-                  <span>수강 학생 명단 (${studentIds.length}명)</span>
-                </span>
+              <div class="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5 flex-wrap gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="flex items-center gap-1.5 shrink-0">
+                    <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
+                    <span>수강 학생 명단 (${studentIds.length}명)</span>
+                  </span>
+
+                  <!-- 수강생 추가 검색 인풋창 (엔터 시 학생 추가) -->
+                  <div class="relative inline-flex items-center">
+                    <i data-lucide="search" class="w-3 h-3 text-slate-400 absolute left-2 pointer-events-none"></i>
+                    <input type="text"
+                           id="bucket-search-input-${safeSub}"
+                           class="pl-6 pr-6 py-1 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 w-28 hover:w-40 focus:w-40 transition-all font-normal shadow-2xs"
+                           placeholder="수강생 추가"
+                           autocomplete="off"
+                           onkeydown="window.app.handleBucketStudentSearchKeyDown(event, decodeURIComponent('${safeSub}'))"
+                           oninput="window.app.handleBucketStudentSearchInput(event, decodeURIComponent('${safeSub}'))"
+                           onclick="event.stopPropagation()"
+                           title="학생 이름을 입력 후 Enter를 누르면 과목에 즉시 추가됩니다" />
+                    <button type="button"
+                            onclick="event.stopPropagation(); const inp=document.getElementById('bucket-search-input-${safeSub}'); if(inp && inp.value.trim()){ window.app.handleAddStudentToBucketByQuery(decodeURIComponent('${safeSub}'), inp.value); inp.value=''; }"
+                            class="absolute right-1 text-slate-400 hover:text-indigo-600 p-0.5 rounded transition cursor-pointer"
+                            title="수강생 추가">
+                      <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <!-- 자동완성 추천 드롭다운 -->
+                    <div id="bucket-search-dropdown-${safeSub}"
+                         class="bucket-search-dropdown absolute top-full left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 hidden max-h-56 overflow-y-auto">
+                    </div>
+                  </div>
+                </div>
+
                 ${studentIds.length > 0 ? `
-                  <button type="button" onclick="window.app.handleClearBucketStudents(decodeURIComponent('${safeSub}'))" class="text-xs text-slate-400 hover:text-red-600 font-medium transition flex items-center gap-1">
+                  <button type="button" onclick="window.app.handleClearBucketStudents(decodeURIComponent('${safeSub}'))" class="text-xs text-slate-400 hover:text-red-600 font-medium transition flex items-center gap-1 cursor-pointer">
                     <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
                     <span>전체 비우기</span>
                   </button>
@@ -4381,6 +4408,190 @@ class TimetableApp {
     if (sideEl && sideContainer) {
       const sideOffset = sideEl.offsetTop - sideContainer.offsetTop;
       sideContainer.scrollTo({ top: Math.max(0, sideOffset - 6), behavior: 'smooth' });
+    }
+  }
+
+  // ==========================================
+  // [과목 버킷 카드] 수강생 검색 후 엔터 시 즉시 추가 기능
+  // ==========================================
+  handleAddStudentToBucketByQuery(subjectName, rawQuery) {
+    const q = (rawQuery || '').trim();
+    if (!q) return;
+
+    if (!this.courseEnrollments[subjectName]) {
+      this.courseEnrollments[subjectName] = [];
+    }
+
+    const cleanQ = q.replace(/\s+/g, '').toLowerCase();
+
+    // 1. 현재 학기 masterStudents에서 검색 (성명 완전일치 > 학번일치 > 부분일치)
+    let matchedStudent = this.masterStudents.find(s => {
+      const sName = String(s.name || '').replace(/\s+/g, '').toLowerCase();
+      const sCode = String(s.studentCode || '').toLowerCase();
+      return sName === cleanQ || sCode === cleanQ;
+    });
+
+    if (!matchedStudent) {
+      matchedStudent = this.masterStudents.find(s => {
+        const sName = String(s.name || '').replace(/\s+/g, '').toLowerCase();
+        const sCode = String(s.studentCode || '').toLowerCase();
+        return sName.includes(cleanQ) || sCode.includes(cleanQ);
+      });
+    }
+
+    // 2. masterStudents에 없다면 excelStudentPool (기준 학생명부)에서 검색
+    if (!matchedStudent && this.excelStudentPool && this.excelStudentPool.length > 0) {
+      let poolMatch = this.excelStudentPool.find(s => {
+        const sName = String(s.name || '').replace(/\s+/g, '').toLowerCase();
+        const sCode = String(s.studentCode || '').toLowerCase();
+        return sName === cleanQ || sCode === cleanQ;
+      });
+
+      if (!poolMatch) {
+        poolMatch = this.excelStudentPool.find(s => {
+          const sName = String(s.name || '').replace(/\s+/g, '').toLowerCase();
+          const sCode = String(s.studentCode || '').toLowerCase();
+          return sName.includes(cleanQ) || sCode.includes(cleanQ);
+        });
+      }
+
+      if (poolMatch) {
+        matchedStudent = {
+          id: `sm_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          grade: poolMatch.grade,
+          classNum: poolMatch.classNum,
+          studentNum: poolMatch.studentNum,
+          studentCode: poolMatch.studentCode || ExcelService.getStudentCode(poolMatch),
+          name: poolMatch.name
+        };
+        this.masterStudents.push(matchedStudent);
+      }
+    }
+
+    // 3. 둘 다 없다면? 입력한 이름으로 신규 학생 등록 및 편제
+    if (!matchedStudent) {
+      matchedStudent = {
+        id: `sm_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        grade: 1,
+        classNum: 1,
+        studentNum: '',
+        studentCode: '',
+        name: q
+      };
+      this.masterStudents.push(matchedStudent);
+    }
+
+    // 4. 이미 해당 과목에 등록되어 있는지 확인
+    if (this.courseEnrollments[subjectName].includes(matchedStudent.id)) {
+      this.showToast(`'${matchedStudent.name}' 학생은 이미 '${subjectName}' 수강생으로 등록되어 있습니다.`);
+      return;
+    }
+
+    // 5. 과목 수강생에 추가
+    this.pushUndoSnapshot(`'${subjectName}'에 '${matchedStudent.name}' 수강생 추가`);
+    this.courseEnrollments[subjectName].push(matchedStudent.id);
+    this.rebuildStudentAssignments();
+    this.saveActiveYearSemesterData();
+    this.saveState();
+    this.render();
+
+    this.showToast(`'${subjectName}' 과목에 '${matchedStudent.name}' 학생이 추가되었습니다.`, true);
+
+    // 연속 입력을 위해 인풋창에 다시 포커스
+    setTimeout(() => {
+      const nextInput = document.getElementById(`bucket-search-input-${encodeURIComponent(subjectName)}`);
+      if (nextInput) {
+        nextInput.focus();
+      }
+    }, 120);
+  }
+
+  handleBucketStudentSearchInput(event, subjectName) {
+    const q = (event.target.value || '').trim();
+    const safeSub = encodeURIComponent(subjectName);
+    const dropdown = document.getElementById(`bucket-search-dropdown-${safeSub}`);
+    if (!dropdown) return;
+
+    if (!q) {
+      dropdown.classList.add('hidden');
+      dropdown.innerHTML = '';
+      return;
+    }
+
+    const cleanQ = q.replace(/\s+/g, '').toLowerCase();
+    const enrolledIds = new Set(this.courseEnrollments[subjectName] || []);
+
+    const candidates = [];
+    const seenNames = new Set();
+
+    // 1) masterStudents
+    this.masterStudents.forEach(s => {
+      const sName = String(s.name || '').replace(/\s+/g, '').toLowerCase();
+      const sCode = String(s.studentCode || '').toLowerCase();
+      if ((sName.includes(cleanQ) || sCode.includes(cleanQ)) && !enrolledIds.has(s.id)) {
+        candidates.push({ ...s, source: 'current' });
+        seenNames.add(s.name);
+      }
+    });
+
+    // 2) excelStudentPool
+    (this.excelStudentPool || []).forEach(s => {
+      const sName = String(s.name || '').replace(/\s+/g, '').toLowerCase();
+      const sCode = String(s.studentCode || '').toLowerCase();
+      if ((sName.includes(cleanQ) || sCode.includes(cleanQ)) && !seenNames.has(s.name)) {
+        candidates.push({ ...s, id: null, source: 'pool' });
+        seenNames.add(s.name);
+      }
+    });
+
+    if (candidates.length === 0) {
+      dropdown.innerHTML = `
+        <div class="px-3 py-2 text-xs text-slate-600 cursor-pointer hover:bg-indigo-50 flex items-center justify-between"
+             onclick="window.app.handleAddStudentToBucketByQuery(decodeURIComponent('${safeSub}'), '${q.replace(/'/g, "\\\'")}');">
+          <span>신규 학생 <strong>'${q}'</strong> 등록 및 추가</span>
+          <span class="text-[10px] text-indigo-600 font-bold bg-indigo-100 px-1.5 py-0.5 rounded">Enter ↵</span>
+        </div>
+      `;
+      dropdown.classList.remove('hidden');
+      return;
+    }
+
+    dropdown.innerHTML = candidates.slice(0, 6).map(s => {
+      const code = s.studentCode || ExcelService.getStudentCode(s);
+      const isPool = s.source === 'pool';
+      const safeName = (s.name || '').replace(/'/g, "\\'");
+      return `
+        <div class="px-3 py-1.5 hover:bg-indigo-50 cursor-pointer flex items-center justify-between text-xs transition"
+             onclick="window.app.handleAddStudentToBucketByQuery(decodeURIComponent('${safeSub}'), '${safeName}');">
+          <div class="flex items-center gap-1.5">
+            <span class="font-mono text-[10px] text-slate-500 font-bold">${code}</span>
+            <span class="font-bold text-slate-900">${s.name}</span>
+            ${isPool ? '<span class="text-[9px] px-1 py-0.2 rounded bg-indigo-100 text-indigo-700 font-semibold">명부</span>' : ''}
+          </div>
+          <span class="text-[10px] text-indigo-600 font-semibold">+ 추가</span>
+        </div>
+      `;
+    }).join('');
+
+    dropdown.classList.remove('hidden');
+  }
+
+  handleBucketStudentSearchKeyDown(event, subjectName) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const val = event.target.value;
+      event.target.value = '';
+      const safeSub = encodeURIComponent(subjectName);
+      const dropdown = document.getElementById(`bucket-search-dropdown-${safeSub}`);
+      if (dropdown) {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+      }
+      this.handleAddStudentToBucketByQuery(subjectName, val);
+    } else if (event.key === 'Escape') {
+      const safeSub = encodeURIComponent(subjectName);
+      const dropdown = document.getElementById(`bucket-search-dropdown-${safeSub}`);
+      if (dropdown) dropdown.classList.add('hidden');
     }
   }
 

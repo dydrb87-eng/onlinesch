@@ -39,7 +39,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="css/styles.css?v=20261112_01">
+  <link rel="stylesheet" href="css/styles.css?v=20261112_02">
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-800">
 
@@ -227,46 +227,47 @@
     <div class="max-w-[1780px] mx-auto flex flex-wrap items-center justify-between gap-4">
       
       <div class="flex items-center flex-wrap gap-3">
-        <!-- 1. [학기 선택 그룹] (좌측 배치) -->
+        <!-- 1. [학기 선택 그룹] (세로 구성: 1학기 / 2학기) -->
         <div class="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-300 shadow-2xs shrink-0">
-          <div class="flex items-center gap-1 px-2 text-xs font-bold text-slate-700 shrink-0">
+          <div class="flex items-center gap-1 px-1.5 text-xs font-bold text-slate-700 shrink-0">
             <i data-lucide="bookmark" class="w-4 h-4 text-indigo-600"></i>
-            <span>학기:</span>
+            <span>학기</span>
           </div>
-          <div id="semester-tabs-container" class="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 gap-1 shadow-2xs">
-            <button type="button" id="tab-semester-1" onclick="window.app.switchSemester('1')" class="px-3.5 py-1.5 text-xs font-bold rounded-md transition flex items-center gap-1.5 bg-blue-600 text-white shadow-xs">
+          <!-- 1학기 / 2학기 세로 배열 -->
+          <div id="semester-tabs-container" class="flex flex-col p-0.5 bg-white rounded-lg border border-slate-200 gap-0.5 shadow-2xs">
+            <button type="button" id="tab-semester-1" onclick="window.app.switchSemester('1')" class="px-3 py-1 text-xs font-bold rounded-md transition flex items-center justify-between gap-1.5 bg-blue-600 text-white shadow-xs cursor-pointer">
               <span>1학기</span>
               <span id="badge-sem-1-count" class="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-white text-blue-700">0명</span>
             </button>
-            <button type="button" id="tab-semester-2" onclick="window.app.switchSemester('2')" class="px-3.5 py-1.5 text-xs font-bold rounded-md transition flex items-center gap-1.5 text-slate-600 hover:bg-slate-100">
+            <button type="button" id="tab-semester-2" onclick="window.app.switchSemester('2')" class="px-3 py-1 text-xs font-semibold rounded-md transition flex items-center justify-between gap-1.5 text-slate-600 hover:bg-slate-100 cursor-pointer">
               <span>2학기</span>
               <span id="badge-sem-2-count" class="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-slate-100 text-slate-500">0명</span>
             </button>
           </div>
-          <!-- 학년도/학기 변경 및 복사 도구 버튼 -->
-          <button type="button" onclick="window.app.openSemesterTransferModal()" class="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center gap-1 transition shadow-2xs ml-1" title="학년도 및 학기간 데이터 복사/이동">
+          <!-- 학년도·학기 변경 및 복사 도구 버튼 -->
+          <button type="button" onclick="window.app.openSemesterTransferModal()" class="px-2.5 py-2 text-xs font-bold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex flex-col items-center justify-center gap-0.5 transition shadow-2xs ml-1 cursor-pointer" title="학년도 및 학기간 데이터 복사/이동">
             <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
-            <span>학년도·학기 변경/복사</span>
+            <span class="text-[10px] leading-tight">학기 변경·복사</span>
           </button>
         </div>
 
-        <!-- 뚜렷한 시각적 구분선 (세로 디바이더 + 화살표) -->
+        <!-- 세로 구분선 -->
         <div class="hidden sm:flex items-center text-slate-300 shrink-0 mx-0.5">
-          <div class="h-8 w-px bg-slate-300"></div>
+          <div class="h-10 w-px bg-slate-300"></div>
           <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 -ml-1"></i>
         </div>
 
-        <!-- 2. [작업 단계 탭] (학기 탭 오른쪽에 배치) -->
-        <div class="flex items-center gap-2 shrink-0">
+        <!-- 2. [작업 단계 탭] (세로 구성: 학생·과목 등록 및 편제 / 시간표 편성) -->
+        <div class="flex flex-col gap-1 shrink-0">
           <button type="button" id="tab-btn-step1" onclick="window.app.switchWorkflowTab('step1')" 
-                  class="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition bg-blue-600 text-white shadow-xs">
-            <span class="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[11px] font-black">1</span>
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition bg-blue-600 text-white shadow-xs cursor-pointer">
+            <span class="w-4 h-4 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px] font-black shrink-0">1</span>
             <span>학생·과목 등록 및 편제</span>
           </button>
           <button type="button" id="tab-btn-step2" onclick="window.app.switchWorkflowTab('step2')" 
-                  class="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition bg-slate-100 hover:bg-slate-200 text-slate-700">
-            <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[11px] font-black">2</span>
-            <span>시간표 편성 (수요조사)</span>
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer">
+            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-black shrink-0">2</span>
+            <span>시간표 편성</span>
           </button>
         </div>
 
@@ -1645,7 +1646,7 @@
   <script src="js/file-storage-service.js?v=20261103_01"></script>
   <script src="js/excel-service.js?v=20261103_01"></script>
   <script src="js/cloud-sync.js?v=20261103_01"></script>
-  <script src="js/app.js?v=20261112_01"></script>
+  <script src="js/app.js?v=20261112_02"></script>
   <script>
     lucide.createIcons();
 

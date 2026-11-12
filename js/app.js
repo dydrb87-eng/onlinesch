@@ -2591,11 +2591,11 @@ class TimetableApp {
 
     if (btnSem1 && btnSem2) {
       if (this.activeSemester === '1') {
-        btnSem1.className = 'px-3.5 py-1 text-xs font-bold rounded-md bg-blue-600 text-white shadow-xs flex items-center gap-1.5 transition';
-        btnSem2.className = 'px-3.5 py-1 text-xs font-semibold rounded-md text-slate-700 hover:bg-slate-300/60 flex items-center gap-1.5 transition';
+        btnSem1.className = 'px-3 py-1 text-xs font-bold rounded-md bg-blue-600 text-white shadow-xs flex items-center justify-between gap-1.5 transition cursor-pointer';
+        btnSem2.className = 'px-3 py-1 text-xs font-semibold rounded-md text-slate-600 hover:bg-slate-100 flex items-center justify-between gap-1.5 transition cursor-pointer';
       } else {
-        btnSem1.className = 'px-3.5 py-1 text-xs font-semibold rounded-md text-slate-700 hover:bg-slate-300/60 flex items-center gap-1.5 transition';
-        btnSem2.className = 'px-3.5 py-1 text-xs font-bold rounded-md bg-blue-600 text-white shadow-xs flex items-center gap-1.5 transition';
+        btnSem1.className = 'px-3 py-1 text-xs font-semibold rounded-md text-slate-600 hover:bg-slate-100 flex items-center justify-between gap-1.5 transition cursor-pointer';
+        btnSem2.className = 'px-3 py-1 text-xs font-bold rounded-md bg-blue-600 text-white shadow-xs flex items-center justify-between gap-1.5 transition cursor-pointer';
       }
     }
 

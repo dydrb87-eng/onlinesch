@@ -86,7 +86,8 @@ const ExcelService = {
     const sub = student.subject || '과목';
     const codeName = this.getStudentCodeName(student);
     const sym = this.getStatusSymbol(student.status);
-    return `${sym} ${sub}(${codeName})`;
+    const memoPart = student.memo ? `[${student.memo}] ` : '';
+    return `${sym} ${memoPart}${sub}(${codeName})`;
   },
 
   // 1. 일과표 양식 다운로드
@@ -1025,11 +1026,11 @@ const ExcelService = {
           const subjectMap = new Map();
           matching.forEach(s => {
             if (!subjectMap.has(s.subject)) {
-              subjectMap.set(s.subject, []);
+              subjectMap.set(s.subject, { memo: s.memo || '', list: [] });
             }
             if (s.name) {
               const code = s.studentCode || (s.grade && s.classNum && s.studentNum ? `${s.grade}${String(s.classNum).padStart(2,'0')}${String(s.studentNum).padStart(2,'0')}` : '');
-              subjectMap.get(s.subject).push({
+              subjectMap.get(s.subject).list.push({
                 stId: code,
                 stName: s.name
               });
@@ -1039,17 +1040,19 @@ const ExcelService = {
           const items = [];
           const sortedSubjects = Array.from(subjectMap.keys()).sort((a, b) => a.localeCompare(b, 'ko'));
           sortedSubjects.forEach(sub => {
-            const stList = subjectMap.get(sub);
+            const entry = subjectMap.get(sub);
+            const memo = entry.memo || '';
+            const stList = entry.list;
             stList.sort((a, b) => {
               if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });
               return a.stName.localeCompare(b.stName, 'ko');
             });
 
             if (stList.length === 0) {
-              items.push({ subject: sub, stId: '', stName: '-' });
+              items.push({ subject: sub, stId: '', stName: '-', memo });
             } else {
               stList.forEach(st => {
-                items.push({ subject: sub, stId: st.stId, stName: st.stName });
+                items.push({ subject: sub, stId: st.stId, stName: st.stName, memo });
               });
             }
           });
@@ -1075,22 +1078,24 @@ const ExcelService = {
       Object.entries(schedules).forEach(([subject, scheduleSlots]) => {
         if (!scheduleSlots) return;
         const slotsArray = Array.isArray(scheduleSlots) ? scheduleSlots : [scheduleSlots];
-        const isMatched = slotsArray.some(slot => {
+        const matchedSlot = slotsArray.find(slot => {
           if (!slot || slot.day !== dayId) return false;
           const matchId = slot.periodId && String(slot.periodId) === periodIdStr;
           const matchNum = slot.period !== undefined && slot.period !== null && slot.period === periodNum;
           return matchId || matchNum;
         });
 
-        if (isMatched) {
-          matchedSubjects.push(subject);
+        if (matchedSlot) {
+          matchedSubjects.push({ subject, memo: matchedSlot.memo || '' });
         }
       });
 
-      matchedSubjects.sort((a, b) => a.localeCompare(b, 'ko'));
+      matchedSubjects.sort((a, b) => a.subject.localeCompare(b.subject, 'ko'));
 
       const items = [];
-      matchedSubjects.forEach(subject => {
+      matchedSubjects.forEach(matchObj => {
+        const subject = matchObj.subject;
+        const memo = matchObj.memo || '';
         const enrolled = enrollments[subject] || [];
         const studentItems = [];
 
@@ -1109,10 +1114,10 @@ const ExcelService = {
         });
 
         if (studentItems.length === 0) {
-          items.push({ subject, stId: '', stName: '-' });
+          items.push({ subject, stId: '', stName: '-', memo });
         } else {
           studentItems.forEach(st => {
-            items.push({ subject, stId: st.stId, stName: st.stName });
+            items.push({ subject, stId: st.stId, stName: st.stName, memo });
           });
         }
       });
@@ -1245,7 +1250,7 @@ const ExcelService = {
             while (spanEnd + 1 < d.items1.length && d.items1[spanEnd + 1].subject === d.items1[spanStart].subject) {
               spanEnd++;
             }
-            subSpans1.push({ start: spanStart, end: spanEnd, subject: d.items1[spanStart].subject });
+            subSpans1.push({ start: spanStart, end: spanEnd, subject: d.items1[spanStart].subject, memo: d.items1[spanStart].memo || '' });
             if (spanEnd > spanStart) {
               sheet.mergeCells(blockStartRow + spanStart, colSub1, blockStartRow + spanEnd, colSub1);
             }
@@ -1280,7 +1285,7 @@ const ExcelService = {
                   }
                 },
                 {
-                  text: `\n(1학기/${stText})`,
+                  text: `\n(1학기/${stText}${span.memo ? '/' + span.memo : ''})`,
                   font: {
                     name: '맑은 고딕',
                     size: 10,
@@ -1402,7 +1407,7 @@ const ExcelService = {
             while (spanEnd + 1 < d.items2.length && d.items2[spanEnd + 1].subject === d.items2[spanStart].subject) {
               spanEnd++;
             }
-            subSpans2.push({ start: spanStart, end: spanEnd, subject: d.items2[spanStart].subject });
+            subSpans2.push({ start: spanStart, end: spanEnd, subject: d.items2[spanStart].subject, memo: d.items2[spanStart].memo || '' });
             if (spanEnd > spanStart) {
               sheet.mergeCells(blockStartRow + spanStart, colSub2, blockStartRow + spanEnd, colSub2);
             }
@@ -1437,7 +1442,7 @@ const ExcelService = {
                   }
                 },
                 {
-                  text: `\n(2학기/${stText})`,
+                  text: `\n(2학기/${stText}${span.memo ? '/' + span.memo : ''})`,
                   font: {
                     name: '맑은 고딕',
                     size: 10,

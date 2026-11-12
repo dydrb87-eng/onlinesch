@@ -389,7 +389,8 @@ class TimetableApp {
                 day: slot.day,
                 periodId: slot.periodId,
                 period: periodObj ? periodObj.period : slot.period,
-                status: slot.status || 'confirmed'
+                status: slot.status || 'confirmed',
+                memo: slot.memo || ''
               });
             }
           });
@@ -1114,6 +1115,30 @@ class TimetableApp {
       closeNoticeModal();
       this.showToast(`[${this.activeYear}학년도] 1·2학기 통합시간표 안내 사항이 저장되었습니다.`);
     });
+
+    // 8-3. 수업 시간 / 메모 설정 모달 이벤트
+    const memoModal = document.getElementById('modal-schedule-memo');
+    const inputMemo = document.getElementById('input-schedule-memo');
+
+    document.getElementById('btn-close-schedule-memo')?.addEventListener('click', () => this.closeCourseScheduleMemoModal());
+    document.getElementById('btn-cancel-schedule-memo')?.addEventListener('click', () => this.closeCourseScheduleMemoModal());
+    document.getElementById('btn-save-schedule-memo')?.addEventListener('click', () => this.submitCourseScheduleMemoModal());
+    document.getElementById('btn-delete-schedule-memo')?.addEventListener('click', () => this.deleteCourseScheduleMemo());
+
+    memoModal?.addEventListener('click', (e) => {
+      if (e.target === memoModal) this.closeCourseScheduleMemoModal();
+    });
+
+    if (inputMemo) {
+      inputMemo.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.submitCourseScheduleMemoModal();
+        } else if (e.key === 'Escape') {
+          this.closeCourseScheduleMemoModal();
+        }
+      });
+    }
 
     // 9. 엑셀 다운로드 (학급 시간표 & 원천 데이터)
     document.getElementById('btn-export-timetable')?.addEventListener('click', () => {
@@ -5869,8 +5894,15 @@ class TimetableApp {
                         ${symHtml}
                       </button>
                       <span class="font-extrabold truncate" style="color: ${isCanceled ? '#64748B' : color.text};">
-                        ${subject}
+                        ${subject}${schedule.memo ? ` <span class="text-indigo-600 font-bold">(${schedule.memo})</span>` : ''}
                       </span>
+                      <!-- 메모(시간) 입력/수정 연필 버튼 -->
+                      <button type="button" 
+                              onclick="event.stopPropagation(); window.app.openCourseScheduleMemoModal('${safeSub}', '${schedule.id || (day.id + '_' + period.id)}')" 
+                              class="p-0.5 rounded-md hover:bg-black/10 transition shrink-0 ${schedule.memo ? 'text-indigo-600 font-bold' : 'text-slate-400 hover:text-indigo-600'}" 
+                              title="${schedule.memo ? `시간/메모: ${schedule.memo} (클릭하여 수정)` : '수업 시간/메모 입력 (예: 15시~)'}">
+                        <i data-lucide="pencil" class="w-3 h-3"></i>
+                      </button>
                       ${conflictCount > 0 ? `
                         <span class="inline-flex items-center gap-0.5 text-[11px] font-black text-rose-700 bg-rose-100 hover:bg-rose-200 border border-rose-300 px-1 py-0.2 rounded shadow-2xs cursor-help transition shrink-0" 
                               title="${conflictTooltip}">
@@ -5919,6 +5951,87 @@ class TimetableApp {
 
     tbody.innerHTML = bodyHtml;
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // ==========================================
+  // 과목 시간 / 메모 모달 제어
+  // ==========================================
+  openCourseScheduleMemoModal(subjectName, scheduleId) {
+    const schedules = this.courseSchedules[subjectName] || [];
+    const slot = schedules.find(sch => sch.id === scheduleId || (sch.day + '_' + sch.periodId) === scheduleId);
+    if (!slot) {
+      this.showToast('해당 시간표 슬롯을 찾을 수 없습니다.');
+      return;
+    }
+
+    this._activeMemoSlot = { subjectName, scheduleId, slot };
+
+    const modal = document.getElementById('modal-schedule-memo');
+    const input = document.getElementById('input-schedule-memo');
+    const titleEl = document.getElementById('modal-memo-title');
+    const subtitleEl = document.getElementById('modal-memo-subtitle');
+
+    const dayName = ExcelService.dayIdToName(slot.day);
+    const periodObj = this.periods.find(p => p.id === slot.periodId || p.period === slot.period);
+    const pName = periodObj ? periodObj.name : (slot.period ? slot.period + '교시' : (slot.periodId + ''));
+
+    if (titleEl) titleEl.textContent = '[' + subjectName + '] 시간/메모 설정';
+    if (subtitleEl) subtitleEl.textContent = dayName + '요일 ' + pName + ' - 교시 시간과 차이가 있는 경우 기입 (예: 15시~)';
+    if (input) {
+      input.value = slot.memo || '';
+    }
+
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      setTimeout(() => input && input.focus(), 100);
+      if (window.lucide) window.lucide.createIcons();
+    } else {
+      // Fallback
+      const val = prompt('[' + subjectName + '] 수업 시간/메모를 입력하세요:\n(예: 15시~, 빈칸 입력 시 삭제)', slot.memo || '');
+      if (val !== null) {
+        this.saveCourseScheduleMemo(subjectName, scheduleId, val.trim());
+      }
+    }
+  }
+
+  closeCourseScheduleMemoModal() {
+    const modal = document.getElementById('modal-schedule-memo');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+    this._activeMemoSlot = null;
+  }
+
+  saveCourseScheduleMemo(subjectName, scheduleId, memoText) {
+    const schedules = this.courseSchedules[subjectName] || [];
+    const slot = schedules.find(sch => sch.id === scheduleId || (sch.day + '_' + sch.periodId) === scheduleId);
+    if (!slot) return;
+
+    this.pushUndoSnapshot("'" + subjectName + "' 수업 시간/메모 변경 (" + (memoText || '삭제') + ")");
+    slot.memo = memoText || '';
+
+    this.rebuildStudentAssignments();
+    this.saveState();
+    this.render();
+    this.showToast("'" + subjectName + "' 과목의 메모가 저장되었습니다.", true);
+  }
+
+  deleteCourseScheduleMemo() {
+    if (!this._activeMemoSlot) return;
+    const { subjectName, scheduleId } = this._activeMemoSlot;
+    this.saveCourseScheduleMemo(subjectName, scheduleId, '');
+    this.closeCourseScheduleMemoModal();
+  }
+
+  submitCourseScheduleMemoModal() {
+    if (!this._activeMemoSlot) return;
+    const { subjectName, scheduleId } = this._activeMemoSlot;
+    const input = document.getElementById('input-schedule-memo');
+    const val = input ? input.value.trim() : '';
+    this.saveCourseScheduleMemo(subjectName, scheduleId, val);
+    this.closeCourseScheduleMemoModal();
   }
 
   // ==========================================

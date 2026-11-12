@@ -862,7 +862,7 @@ const ExcelService = {
 
     // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열)
     const columnsConfig = [
-      { width: 16 } // A: 교시
+      { width: 18 } // A: 교시 (16pt 글씨 최적화)
     ];
     targetDays.forEach(() => {
       columnsConfig.push({ width: 23 }); // 1학기 과목명
@@ -924,16 +924,16 @@ const ExcelService = {
     const rowSubjIdx = rowSemIdx + 1;
     let currentRow = rowSubjIdx + 1;
 
-    // 요일 대분류 헤더 (A열 교시, 각 요일 4개열씩 병합)
+    // 요일 대분류 헤더 (A열 교시, 각 요일 4개열씩 병합) - 글자 크기 16
     const rowDay = sheet.getRow(rowDayIdx);
-    rowDay.height = 30;
+    rowDay.height = 36;
     targetDays.forEach((day, idx) => {
       const startCol = 2 + idx * 4;
       const endCol = startCol + 3;
       sheet.mergeCells(rowDayIdx, startCol, rowDayIdx, endCol);
       const dayCell = sheet.getCell(rowDayIdx, startCol);
       dayCell.value = day.name;
-      dayCell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+      dayCell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
       dayCell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
       for (let c = startCol; c <= endCol; c++) {
         const cell = sheet.getCell(rowDayIdx, c);
@@ -942,9 +942,9 @@ const ExcelService = {
       }
     });
 
-    // 학기 중분류 헤더 (1학기 2개열, 2학기 2개열 병합)
+    // 학기 중분류 헤더 (1학기 2개열, 2학기 2개열 병합) - 글자 크기 16
     const rowSem = sheet.getRow(rowSemIdx);
-    rowSem.height = 26;
+    rowSem.height = 34;
     targetDays.forEach((day, idx) => {
       const colSem1 = 2 + idx * 4;
       const colSem2 = colSem1 + 2;
@@ -953,7 +953,7 @@ const ExcelService = {
       sheet.mergeCells(rowSemIdx, colSem1, rowSemIdx, colSem1 + 1);
       const sem1Cell = sheet.getCell(rowSemIdx, colSem1);
       sem1Cell.value = '1학기';
-      sem1Cell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF1D4ED8' } };
+      sem1Cell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF1D4ED8' } };
       sem1Cell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
       for (let c = colSem1; c <= colSem1 + 1; c++) {
         const cell = sheet.getCell(rowSemIdx, c);
@@ -965,7 +965,7 @@ const ExcelService = {
       sheet.mergeCells(rowSemIdx, colSem2, rowSemIdx, colSem2 + 1);
       const sem2Cell = sheet.getCell(rowSemIdx, colSem2);
       sem2Cell.value = '2학기';
-      sem2Cell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF4338CA' } };
+      sem2Cell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF4338CA' } };
       sem2Cell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
       for (let c = colSem2; c <= colSem2 + 1; c++) {
         const cell = sheet.getCell(rowSemIdx, c);
@@ -974,16 +974,16 @@ const ExcelService = {
       }
     });
 
-    // 소분류 헤더 (과목명, (학번) 학생명)
+    // 소분류 헤더 (과목명, (학번) 학생명) - 글자 크기 16
     const rowSubj = sheet.getRow(rowSubjIdx);
-    rowSubj.height = 26;
+    rowSubj.height = 34;
     targetDays.forEach((day, idx) => {
       const colBase = 2 + idx * 4;
       const headers = ['과목명', '(학번) 학생명', '과목명', '(학번) 학생명'];
       headers.forEach((h, hIdx) => {
         const cell = sheet.getCell(rowSubjIdx, colBase + hIdx);
         cell.value = h;
-        cell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF334155' } };
+        cell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF334155' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
         this.applyBorder(cell);
@@ -994,7 +994,7 @@ const ExcelService = {
     sheet.mergeCells(rowDayIdx, 1, rowSubjIdx, 1);
     const colPeriodCell = sheet.getCell(rowDayIdx, 1);
     colPeriodCell.value = '교시';
-    colPeriodCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+    colPeriodCell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
     colPeriodCell.alignment = { vertical: 'middle', horizontal: 'center' };
     for (let r = rowDayIdx; r <= rowSubjIdx; r++) {
       const cell = sheet.getCell(r, 1);
@@ -1158,8 +1158,8 @@ const ExcelService = {
       }
       const periodCell = sheet.getCell(blockStartRow, 1);
       periodCell.value = `${period.name}\n(${period.startTime}~\n${period.endTime})`;
-      periodCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF1E293B' } };
-      periodCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      periodCell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF1E293B' } };
+      periodCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true, shrinkToFit: true };
 
       for (let r = blockStartRow; r <= blockEndRow; r++) {
         const cell = sheet.getCell(r, 1);
@@ -1521,6 +1521,8 @@ const ExcelService = {
         let bottomColor = curBorder.bottom?.color || borderLight;
 
         // 1) 좌/우 경계 설정
+        const borderDotted = { argb: 'FF64748B' };
+
         if (c === 1) {
           // 교시 열: 왼쪽 굵은 선, 오른쪽 굵은 선 (교시와 월요일 사이)
           leftStyle = 'medium';
@@ -1535,6 +1537,14 @@ const ExcelService = {
             // 요일 시작 (1학기 과목) -> 왼쪽 굵은 선 (요일 구분)
             leftStyle = 'medium';
             leftColor = borderDark;
+          } else if (subCol === 1) {
+            // ★ 학기 간 구분: 1학기 끝 (1학기 학생) -> 오른쪽 점선 테두리
+            rightStyle = 'dotted';
+            rightColor = borderDotted;
+          } else if (subCol === 2) {
+            // ★ 학기 간 구분: 2학기 시작 (2학기 과목) -> 왼쪽 점선 테두리
+            leftStyle = 'dotted';
+            leftColor = borderDotted;
           } else if (subCol === 3) {
             // 요일 끝 (2학기 학생) -> 오른쪽 굵은 선 (요일 구분)
             rightStyle = 'medium';
@@ -1542,7 +1552,8 @@ const ExcelService = {
           }
         }
 
-        // 2) 상/하 경계 설정 (교시 간 검은색 테두리 적용)
+        // 2) 상/하 경계 설정
+        // ★ 교시 간 구분 테두리: 선 스타일 첫 번째의 일반선(thin) 테두리 (굵은 테두리 아님)
         const borderBlack = { argb: 'FF000000' };
 
         if (r === 3) {
@@ -1551,29 +1562,29 @@ const ExcelService = {
           topColor = borderDark;
         }
         if (r === 5) {
-          // 헤더와 데이터 경계선 (1교시 상단)
-          bottomStyle = 'medium';
+          // 헤더와 데이터 경계선 (1교시 상단: 일반선 검은색)
+          bottomStyle = 'thin';
           bottomColor = borderBlack;
         }
         if (r === 6) {
-          // 데이터 첫 행 상단 (헤더와의 경계)
-          topStyle = 'medium';
+          // 데이터 첫 행 상단 (일반선 검은색)
+          topStyle = 'thin';
           topColor = borderBlack;
         }
         if (periodEndRows.has(r)) {
-          // ★ 교시 간 하단 경계선: 검은색 테두리
-          bottomStyle = 'medium';
+          // ★ 교시 간 하단 구분선: 일반선(thin) 검은색 테두리 (굵은 테두리 아님)
+          bottomStyle = 'thin';
           bottomColor = borderBlack;
         }
         if (periodStartRows.has(r) && r > 6) {
-          // ★ 교시 간 상단 경계선: 검은색 테두리
-          topStyle = 'medium';
+          // ★ 교시 간 상단 구분선: 일반선(thin) 검은색 테두리 (굵은 테두리 아님)
+          topStyle = 'thin';
           topColor = borderBlack;
         }
         if (r === endDataRow) {
           // 표 맨 아래 외곽선
           bottomStyle = 'medium';
-          bottomColor = borderBlack;
+          bottomColor = borderDark;
         }
 
         cell.border = {

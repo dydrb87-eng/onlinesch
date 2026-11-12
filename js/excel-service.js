@@ -1486,9 +1486,9 @@ const ExcelService = {
     });
 
     // ==========================================
-    // ★ 요일 및 학기 구분 테두리 스타일 일괄 적용
+    // ★ 요일 구분 테두리 스타일 일괄 적용
     // - 요일과 요일 사이: 굵은 테두리 (medium)
-    // - 학기와 학기 사이: 두줄 테두리 (double)
+    // - 학기 및 일반 셀: 이전 기본 thin 테두리 유지
     // - 표 상단/하단 경계: 굵은 테두리 (medium)
     // ==========================================
     const endDataRow = currentRow - 1;
@@ -1523,14 +1523,6 @@ const ExcelService = {
           if (subCol === 0) {
             // 요일 시작 (1학기 과목) -> 왼쪽 굵은 선 (요일 구분)
             leftStyle = 'medium';
-            leftColor = borderDark;
-          } else if (subCol === 1) {
-            // 1학기 끝 (1학기 학생) -> 오른쪽 두줄 선 (학기 구분)
-            rightStyle = 'double';
-            rightColor = borderDark;
-          } else if (subCol === 2) {
-            // 2학기 시작 (2학기 과목) -> 왼쪽 두줄 선 (학기 구분)
-            leftStyle = 'double';
             leftColor = borderDark;
           } else if (subCol === 3) {
             // 요일 끝 (2학기 학생) -> 오른쪽 굵은 선 (요일 구분)

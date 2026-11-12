@@ -6038,11 +6038,17 @@ class TimetableApp {
   // 시간표 카드 드래그 & 셀 드롭 (기본: 이동, Ctrl 누른 채 드래그 시: 복사)
   // ==========================================
   handleTimetableCardDragStart(e, subjectName, fromDay, fromPeriodId) {
+    const schedules = this.courseSchedules[subjectName] || [];
+    const sourceSlot = schedules.find(sch => 
+      sch.day === fromDay && (sch.periodId === fromPeriodId || (!sch.periodId && String(sch.period) === String(fromPeriodId)))
+    );
+
     this.dragData = {
       type: 'timetable-subject',
       subjectName: subjectName,
       fromDay: fromDay,
-      fromPeriodId: fromPeriodId
+      fromPeriodId: fromPeriodId,
+      memo: sourceSlot ? (sourceSlot.memo || '') : ''
     };
 
     try {
@@ -6131,10 +6137,12 @@ class TimetableApp {
       const isCopyMode = Boolean(e.ctrlKey || e.metaKey);
 
       if (isCopyMode) {
-        // [복사 (Copy)]: 기존 슬롯은 그대로 유지하고 대상 위치에 추가!
-        const added = this.addCourseSchedule(subjectName, targetDay, targetPeriodId, 'confirmed');
+        // [복사 (Copy)]: 기존 슬롯은 그대로 유지하고 대상 위치에 추가! (메모도 함께 복사)
+        const memoToCopy = data.memo || '';
+        const added = this.addCourseSchedule(subjectName, targetDay, targetPeriodId, 'confirmed', memoToCopy);
         if (added) {
-          this.showToast(`[Ctrl 복사] '${subjectName}' 과목이 ${dayName} ${periodName}에 추가 배치되었습니다.`);
+          const memoInfo = memoToCopy ? ` (메모: ${memoToCopy})` : '';
+          this.showToast(`[Ctrl 복사] '${subjectName}' 과목이 ${dayName} ${periodName}에 추가 배치되었습니다.${memoInfo}`);
         }
       } else {
         // [이동 (Move)]: 기존 위치 슬롯을 대상 위치로 옮김!
@@ -6147,7 +6155,7 @@ class TimetableApp {
     }
   }
 
-  addCourseSchedule(subjectName, day, periodId, status = 'confirmed') {
+  addCourseSchedule(subjectName, day, periodId, status = 'confirmed', memo = '') {
     if (!this.courseSchedules[subjectName]) this.courseSchedules[subjectName] = [];
     const periodObj = this.periods.find(p => p.id === periodId);
 
@@ -6167,7 +6175,8 @@ class TimetableApp {
       day: day,
       periodId: periodId,
       period: periodObj ? periodObj.period : null,
-      status: status
+      status: status,
+      memo: memo || ''
     });
     this.rebuildStudentAssignments();
     this.saveState();

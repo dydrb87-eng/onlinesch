@@ -746,7 +746,7 @@ const ExcelService = {
     // 5-4. [신규 탭] 1,2학기 통합시간표 시트 생성 (1학기/2학기 다운로드 무관 항상 포함)
     if (yearData && typeof yearData === 'object') {
       const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true }] });
-      this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText);
+      this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText, subjectColorMap);
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -754,14 +754,15 @@ const ExcelService = {
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-      // =========================================================================
+        // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
   // - 타이틀 제외 데이터 글자 크기 13pt, '(학번)' 부분은 9pt (Rich Text 적용)
-  // - '과목명'은 세로 병합을 먼저 수행한 후 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
+  // - 과목명에 연한 파스텔톤 배경색을 채워 시각적 구별성 강화 (과목별 고유 파스텔톤)
+  // - '과목명'은 세로 병합을 먼저 수행한 후 파스텔 배경 및 왼쪽 정렬/들여쓰기 1(indent: 1) 적용
   // - 안내 사항 기입 기능 지원 (타이틀 아래 돋보이는 디자인 박스)
   // =========================================================================
-  buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '') {
+  buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}) {
     const sem1Data = (yearData && yearData['1']) || {};
     const sem2Data = (yearData && yearData['2']) || {};
 
@@ -772,6 +773,44 @@ const ExcelService = {
       { id: 'thu', name: '목요일' },
       { id: 'fri', name: '금요일' }
     ];
+
+    // 연한 파스텔톤 팔레트 (진하지 않고 부드러운 톤)
+    const softPastelPalette = [
+      { bg: 'FFE0F2FE', text: 'FF0369A1' }, // 소프트 스카이블루
+      { bg: 'FFD1FAE5', text: 'FF047857' }, // 소프트 민트그린
+      { bg: 'FFEDE9FE', text: 'FF6D28D9' }, // 소프트 라벤더
+      { bg: 'FFFFE4E6', text: 'FFBE123C' }, // 소프트 로즈핑크
+      { bg: 'FFFEF3C7', text: 'FFB45309' }, // 소프트 앰버옐로우
+      { bg: 'FFFFEDD5', text: 'FFC2410C' }, // 소프트 피치오렌지
+      { bg: 'FFCCFBF1', text: 'FF0F766E' }, // 소프트 틸
+      { bg: 'FFFCE7F3', text: 'FFBE185D' }, // 소프트 핑크
+      { bg: 'FFE0E7FF', text: 'FF4338CA' }, // 소프트 인디고블루
+      { bg: 'FFECFCCB', text: 'FF4D7C0F' }, // 소프트 라임그린
+      { bg: 'FFCFFAFE', text: 'FF0E7490' }, // 소프트 시안
+      { bg: 'FFF3E8FF', text: 'FF7E22CE' }, // 소프트 퍼플
+      { bg: 'FFFEE2E2', text: 'FFB91C1C' }, // 소프트 코랄
+      { bg: 'FFFEF9C3', text: 'FFA16207' }, // 소프트 버터옐로우
+      { bg: 'FFE2E8F0', text: 'FF334155' }  // 소프트 슬레이트그레이
+    ];
+
+    // 과목명에 따른 파스텔 색상 반환 헬퍼
+    const getSubjectColor = (subName) => {
+      if (!subName) return null;
+      if (subjectColorMap && subjectColorMap[subName]) {
+        const info = subjectColorMap[subName];
+        return {
+          bg: info.excelBg ? 'FF' + info.excelBg : softPastelPalette[0].bg,
+          text: info.excelText ? 'FF' + info.excelText : 'FF1E293B'
+        };
+      }
+      let hash = 0;
+      for (let i = 0; i < subName.length; i++) {
+        hash = (hash << 5) - hash + subName.charCodeAt(i);
+        hash |= 0;
+      }
+      const idx = Math.abs(hash) % softPastelPalette.length;
+      return softPastelPalette[idx];
+    };
 
     // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열, 13pt 글자에 맞게 넉넉히 설정)
     const columnsConfig = [
@@ -1003,6 +1042,7 @@ const ExcelService = {
       // ★ 사용자 요구사항: 
       // 1) "타이틀 제외, 데이터의 글자 크기는 13으로. '(학번)'에 해당하는 값은 9로."
       // 2) "'과목명'은 병합을 먼저 한 후 왼쪽 정렬, 들여쓰기 적용의 순서로 해줘"
+      // 3) "과목명에 색을 채워서 구별되게 하기. 진한 색이 아닌 연한 파스텔톤."
       daySlotsData.forEach((d, dayIdx) => {
         const colSub1 = 2 + dayIdx * 4;
         const colSt1 = colSub1 + 1;
@@ -1062,13 +1102,35 @@ const ExcelService = {
           }
         }
 
-        // 1학기: 3) 병합 완료 후 -> 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
+        // 1학기: 3) 병합 완료 후 -> 연한 파스텔톤 배경 채우기 + 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1 적용
         subSpans1.forEach(span => {
           const topRow = blockStartRow + span.start;
+          const endRow = blockStartRow + span.end;
           const cell = sheet.getCell(topRow, colSub1);
-          cell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FF1E293B' } };
+          const color = getSubjectColor(span.subject);
+
+          cell.font = { 
+            name: '맑은 고딕', 
+            size: 13, 
+            bold: true, 
+            color: { argb: color ? color.text : 'FF1E293B' } 
+          };
           cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-          this.applyBorder(cell);
+
+          // 파스텔톤 배경색 채우기
+          if (color) {
+            for (let r = topRow; r <= endRow; r++) {
+              const c = sheet.getCell(r, colSub1);
+              c.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: color.bg }
+              };
+              this.applyBorder(c);
+            }
+          } else {
+            this.applyBorder(cell);
+          }
         });
 
         // ==========================================
@@ -1124,13 +1186,35 @@ const ExcelService = {
           }
         }
 
-        // 2학기: 3) 병합 완료 후 -> 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
+        // 2학기: 3) 병합 완료 후 -> 연한 파스텔톤 배경 채우기 + 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1 적용
         subSpans2.forEach(span => {
           const topRow = blockStartRow + span.start;
+          const endRow = blockStartRow + span.end;
           const cell = sheet.getCell(topRow, colSub2);
-          cell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FF1E293B' } };
+          const color = getSubjectColor(span.subject);
+
+          cell.font = { 
+            name: '맑은 고딕', 
+            size: 13, 
+            bold: true, 
+            color: { argb: color ? color.text : 'FF1E293B' } 
+          };
           cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-          this.applyBorder(cell);
+
+          // 파스텔톤 배경색 채우기
+          if (color) {
+            for (let r = topRow; r <= endRow; r++) {
+              const c = sheet.getCell(r, colSub2);
+              c.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: color.bg }
+              };
+              this.applyBorder(c);
+            }
+          } else {
+            this.applyBorder(cell);
+          }
         });
       });
 

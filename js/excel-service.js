@@ -580,7 +580,7 @@ const ExcelService = {
 
     // 5-0. [신규 탭] 1,2학기 통합시간표 시트 생성 (엑셀의 가장 첫 번째 탭 위치)
     if (yearData && typeof yearData === 'object') {
-      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true, zoomScale: 70 }] });
+      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true, zoomScale: 40 }] });
       this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText, subjectColorMap);
     }
 
@@ -757,7 +757,7 @@ const ExcelService = {
                   // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
-  // - [화면 배율] 파일을 열었을 때 전체가 한눈에 보이도록 70% 축소 상태(zoomScale: 70)로 저장
+  // - [화면 배율] 파일을 열었을 때 전체가 한눈에 보이도록 40% 축소 상태(zoomScale: 40)로 저장
   // - [안내사항] '안내사항: '(빨간색) 및 사용자 입력 내용 모두 글자 크기 32pt 적용
   // - [행 높이] 1명 신청 행(단일 행)은 과목명-줄바꿈-개설상태가 모두 잘 보이도록 최소 44pt 적용
   // - [탭 위치] 엑셀 파일 내 가장 첫 번째 탭에 위치
@@ -779,7 +779,7 @@ const ExcelService = {
       {
         state: 'normal',
         showGridLines: true,
-        zoomScale: 70 // 전체 21개 열과 시간표 전체가 한눈에 들어오는 최적 배율
+        zoomScale: 40 // 전체 21개 열과 시간표 전체가 한눈에 들어오는 40% 축소 배율
       }
     ];
 
@@ -1277,7 +1277,7 @@ const ExcelService = {
                   }
                 },
                 {
-                  text: `\n(${stText})`,
+                  text: `\n(1학기/${stText})`,
                   font: {
                     name: '맑은 고딕',
                     size: 10,
@@ -1434,7 +1434,7 @@ const ExcelService = {
                   }
                 },
                 {
-                  text: `\n(${stText})`,
+                  text: `\n(2학기/${stText})`,
                   font: {
                     name: '맑은 고딕',
                     size: 10,
@@ -1484,6 +1484,91 @@ const ExcelService = {
 
       currentRow = blockEndRow + 1;
     });
+
+    // ==========================================
+    // ★ 요일 및 학기 구분 테두리 스타일 일괄 적용
+    // - 요일과 요일 사이: 굵은 테두리 (medium)
+    // - 학기와 학기 사이: 두줄 테두리 (double)
+    // - 표 상단/하단 경계: 굵은 테두리 (medium)
+    // ==========================================
+    const endDataRow = currentRow - 1;
+    const borderDark = { argb: 'FF334155' };
+    const borderLight = { argb: 'FFCBD5E1' };
+
+    for (let r = 3; r <= endDataRow; r++) {
+      for (let c = 1; c <= 21; c++) {
+        const cell = sheet.getCell(r, c);
+        const curBorder = cell.border || {};
+
+        let leftStyle = curBorder.left?.style || 'thin';
+        let leftColor = curBorder.left?.color || borderLight;
+        let rightStyle = curBorder.right?.style || 'thin';
+        let rightColor = curBorder.right?.color || borderLight;
+        let topStyle = curBorder.top?.style || 'thin';
+        let topColor = curBorder.top?.color || borderLight;
+        let bottomStyle = curBorder.bottom?.style || 'thin';
+        let bottomColor = curBorder.bottom?.color || borderLight;
+
+        // 1) 좌/우 경계 설정
+        if (c === 1) {
+          // 교시 열: 왼쪽 굵은 선, 오른쪽 굵은 선 (교시와 월요일 사이)
+          leftStyle = 'medium';
+          leftColor = borderDark;
+          rightStyle = 'medium';
+          rightColor = borderDark;
+        } else {
+          // c: 2 ~ 21 (월~금, 각 4열씩: 과목1, 학생1, 과목2, 학생2)
+          const subCol = (c - 2) % 4; // 0: 1학기 과목, 1: 1학기 학생, 2: 2학기 과목, 3: 2학기 학생
+
+          if (subCol === 0) {
+            // 요일 시작 (1학기 과목) -> 왼쪽 굵은 선 (요일 구분)
+            leftStyle = 'medium';
+            leftColor = borderDark;
+          } else if (subCol === 1) {
+            // 1학기 끝 (1학기 학생) -> 오른쪽 두줄 선 (학기 구분)
+            rightStyle = 'double';
+            rightColor = borderDark;
+          } else if (subCol === 2) {
+            // 2학기 시작 (2학기 과목) -> 왼쪽 두줄 선 (학기 구분)
+            leftStyle = 'double';
+            leftColor = borderDark;
+          } else if (subCol === 3) {
+            // 요일 끝 (2학기 학생) -> 오른쪽 굵은 선 (요일 구분)
+            rightStyle = 'medium';
+            rightColor = borderDark;
+          }
+        }
+
+        // 2) 상/하 경계 설정
+        if (r === 3) {
+          // 요일 헤더 맨 위
+          topStyle = 'medium';
+          topColor = borderDark;
+        }
+        if (r === 5) {
+          // 헤더와 데이터 경계선 (헤더 아래쪽 굵은 선)
+          bottomStyle = 'medium';
+          bottomColor = borderDark;
+        }
+        if (r === 6) {
+          // 데이터 첫 행 상단 (헤더와의 경계 맞춤)
+          topStyle = 'medium';
+          topColor = borderDark;
+        }
+        if (r === endDataRow) {
+          // 표 맨 아래 외곽선
+          bottomStyle = 'medium';
+          bottomColor = borderDark;
+        }
+
+        cell.border = {
+          top: { style: topStyle, color: topColor },
+          bottom: { style: bottomStyle, color: bottomColor },
+          left: { style: leftStyle, color: leftColor },
+          right: { style: rightStyle, color: rightColor }
+        };
+      }
+    }
   },
 
   buildTimetableSheet(sheet, periods, days, studentList, subjectColorMap, titleText) {

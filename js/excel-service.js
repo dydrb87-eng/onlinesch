@@ -754,23 +754,23 @@ const ExcelService = {
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-            // =========================================================================
+              // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
-  // - [인쇄 설정] 여백: 좁게, 용지 방향: 가로, 크기: B4, 인쇄제목 반복할 행: 1~5행
+  // - [인쇄 설정] 가로 B4 1장에 꽉 차게 인쇄 (fitToWidth: 1, fitToHeight: 1, simplex)
+  // - [안내 사항] '안내 사항: ' 빨간색 18pt, 가로로 길게 입력, 글자 크기 18pt
+  // - [폐강 과목] 과목명 취소선(strike: true) 적용, 과목 및 학생 셀 배경 연회색(#E2E8F0) 처리
   // - [상태 표기] 과목명 오른쪽에 (개설/조정/폐강) 표기 (글자 크기 10pt, 과목명 13pt)
   // - 1학기/2학기 어떤 탭에서 다운로드하든 양 학기 데이터를 100% 온전히 추출 및 표시
   // - 타이틀 제외 데이터 글자 크기 13pt, '(학번)' 부분은 9pt (Rich Text 적용)
   // - 과목명에 연한 파스텔톤 배경색을 채워 시각적 구별성 강화 (과목별 고유 파스텔톤)
-  // - '과목명'은 세로 병합을 먼저 수행한 후 파스텔 배경 및 왼쪽 정렬/들여쓰기 1(indent: 1) 적용
-  // - 안내 사항 기입 기능 지원 (타이틀 아래 돋보이는 디자인 박스)
   // =========================================================================
   buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}) {
     const sem1Data = (yearData && yearData['1']) || {};
     const sem2Data = (yearData && yearData['2']) || {};
 
     // -------------------------------------------------------------------------
-    // ★ 페이지 인쇄 설정: 여백 좁게, 가로 방향, B4 크기, 인쇄제목 1~5행 반복
+    // ★ 페이지 인쇄 설정: B4 가로 1장에 꽉 차게 인쇄 배율 설정 (단면 인쇄)
     // -------------------------------------------------------------------------
     sheet.pageSetup = {
       orientation: 'landscape',  // 용지 방향: 가로
@@ -779,15 +779,14 @@ const ExcelService = {
       margins: {                // 여백: 좁게 (Narrow)
         left: 0.25,
         right: 0.25,
-        top: 0.75,
-        bottom: 0.75,
-        header: 0.3,
-        footer: 0.3
+        top: 0.4,
+        bottom: 0.4,
+        header: 0.2,
+        footer: 0.2
       },
-      printTitlesRow: '1:5',    // 인쇄제목 - 반복할 행 : 1~5행
-      fitToPage: true,          // 페이지 맞춤
+      fitToPage: true,          // 1페이지 꽉 차게 맞춤
       fitToWidth: 1,            // 가로 1페이지 폭에 맞춤
-      fitToHeight: 2            // 세로 총 2페이지로 분할 맞춤
+      fitToHeight: 1            // 세로 1페이지 높이에 맞춤 (전체 1장에 꽉 차게 인쇄!)
     };
 
     const targetDays = [
@@ -867,17 +866,27 @@ const ExcelService = {
     sheet.getRow(1).height = 42;
 
     let rowDayIdx = 2;
-    // 2행: 안내 사항이 있는 경우 강조 박스로 삽입
+    // 2행: 안내 사항이 있는 경우 강조 박스로 삽입 ('안내 사항: ' 빨간색 18pt, 가로로 길게 입력)
     const trimmedNotice = (noticeText || '').trim();
     if (trimmedNotice) {
       sheet.mergeCells(2, 1, 2, 21);
       const noticeCell = sheet.getCell(2, 1);
-      noticeCell.value = `📢 [안내 사항]\n${trimmedNotice}`;
-      noticeCell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF1E293B' } };
-      noticeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-      
-      const lines = trimmedNotice.split('\n').length;
-      sheet.getRow(2).height = Math.max(34, (lines + 1) * 20 + 8);
+      const inlineNotice = trimmedNotice.replace(/\r?\n/g, '   ');
+
+      noticeCell.value = {
+        richText: [
+          {
+            text: '안내 사항: ',
+            font: { name: '맑은 고딕', size: 18, bold: true, color: { argb: 'FFDC2626' } } // 빨간색 18pt
+          },
+          {
+            text: inlineNotice,
+            font: { name: '맑은 고딕', size: 18, bold: true, color: { argb: 'FF1E293B' } } // 본문 18pt
+          }
+        ]
+      };
+      noticeCell.alignment = { vertical: 'middle', horizontal: 'left' };
+      sheet.getRow(2).height = 42; // 18pt 크기에 맞춘 시원한 행 높이
 
       for (let c = 1; c <= 21; c++) {
         const cell = sheet.getCell(2, c);
@@ -1126,16 +1135,6 @@ const ExcelService = {
       const blockStartRow = currentRow;
       const blockEndRow = blockStartRow + maxBlockRows - 1;
 
-      // ★ 인쇄 영역 분할: 7교시 시작 지점에서 페이지 나누기 (1페이지: ~6교시, 2페이지: 7~8교시)
-      const isPeriod7 = (period.period === 7) || (period.name && period.name.includes('7교시'));
-      if (isPeriod7) {
-        try {
-          sheet.getRow(blockStartRow).addPageBreak();
-        } catch (e) {}
-        if (!sheet.rowBreaks) sheet.rowBreaks = [];
-        sheet.rowBreaks.push(blockStartRow - 1);
-      }
-
       // 행 높이 설정 (글자 크기 13pt에 맞춰 넉넉하게 29로 설정)
       for (let r = blockStartRow; r <= blockEndRow; r++) {
         sheet.getRow(r).height = 29;
@@ -1174,26 +1173,58 @@ const ExcelService = {
 
           cSub.value = item ? item.subject : '';
 
+          const isCanceled1 = item && item.subject && getStatusText(statusMap1, item.subject) === '폐강';
+
           if (item) {
             if (item.stId) {
-              // 학번은 9pt, 학생명은 13pt
+              // 학번은 9pt, 학생명은 13pt (폐강 과목이면 취소선 및 회색 톤)
               cSt.value = {
                 richText: [
-                  { text: `(${item.stId}) `, font: { name: '맑은 고딕', size: 9, color: { argb: 'FF475569' } } },
-                  { text: item.stName, font: { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } } }
+                  { 
+                    text: `(${item.stId}) `, 
+                    font: { 
+                      name: '맑은 고딕', 
+                      size: 9, 
+                      strike: isCanceled1,
+                      color: { argb: isCanceled1 ? 'FF94A3B8' : 'FF475569' } 
+                    } 
+                  },
+                  { 
+                    text: item.stName, 
+                    font: { 
+                      name: '맑은 고딕', 
+                      size: 13, 
+                      strike: isCanceled1,
+                      color: { argb: isCanceled1 ? 'FF94A3B8' : 'FF1E293B' } 
+                    } 
+                  }
                 ]
               };
             } else {
               cSt.value = item.stName;
-              cSt.font = { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } };
+              cSt.font = { 
+                name: '맑은 고딕', 
+                size: 13, 
+                strike: isCanceled1,
+                color: { argb: isCanceled1 ? 'FF94A3B8' : 'FF1E293B' } 
+              };
             }
           } else {
             cSt.value = '';
             cSt.font = { name: '맑은 고딕', size: 13 };
           }
 
-          // (학번) 학생명: 왼쪽 정렬 + 들여쓰기 1
+          // (학번) 학생명: 왼쪽 정렬
           cSt.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          // 폐강 과목인 경우 학생 셀 배경도 회색 처리!
+          if (isCanceled1) {
+            cSt.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE2E8F0' } // 폐강 연회색 배경
+            };
+          }
 
           this.applyBorder(cSub);
           this.applyBorder(cSt);
@@ -1216,12 +1247,13 @@ const ExcelService = {
           }
         }
 
-        // 1학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 파스텔 배경 + 좌측정렬/들여쓰기 1
+        // 1학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 배경색 채우기 + 좌측 정렬
         subSpans1.forEach(span => {
           const topRow = blockStartRow + span.start;
           const endRow = blockStartRow + span.end;
           const cell = sheet.getCell(topRow, colSub1);
           const color = getSubjectColor(span.subject);
+          const isCanceled = span.subject && getStatusText(statusMap1, span.subject) === '폐강';
 
           if (span.subject) {
             const stText = getStatusText(statusMap1, span.subject);
@@ -1237,7 +1269,8 @@ const ExcelService = {
                     name: '맑은 고딕',
                     size: 13,
                     bold: true,
-                    color: { argb: color ? color.text : 'FF1E293B' }
+                    strike: isCanceled, // 폐강 과목 취소선 적용
+                    color: { argb: isCanceled ? 'FF64748B' : (color ? color.text : 'FF1E293B') }
                   }
                 },
                 {
@@ -1257,19 +1290,33 @@ const ExcelService = {
 
           cell.alignment = { vertical: 'middle', horizontal: 'left' };
 
-          // 파스텔톤 배경색 채우기
-          if (color) {
+          // 배경색 채우기 (폐강 과목은 회색 #E2E8F0, 개설/조정은 고유 파스텔톤)
+          const fillBgColor = isCanceled ? 'FFE2E8F0' : (color ? color.bg : null);
+          if (fillBgColor) {
             for (let r = topRow; r <= endRow; r++) {
               const c = sheet.getCell(r, colSub1);
               c.fill = {
                 type: 'pattern',
                 pattern: 'solid',
-                fgColor: { argb: color.bg }
+                fgColor: { argb: fillBgColor }
               };
               this.applyBorder(c);
             }
           } else {
             this.applyBorder(cell);
+          }
+
+          // 폐강인 경우 학생 셀들 전체에도 회색 배경 재확인
+          if (isCanceled) {
+            for (let r = topRow; r <= endRow; r++) {
+              const cSt = sheet.getCell(r, colSt1);
+              cSt.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE2E8F0' }
+              };
+              this.applyBorder(cSt);
+            }
           }
         });
 
@@ -1284,26 +1331,58 @@ const ExcelService = {
 
           cSub.value = item ? item.subject : '';
 
+          const isCanceled2 = item && item.subject && getStatusText(statusMap2, item.subject) === '폐강';
+
           if (item) {
             if (item.stId) {
-              // 학번은 9pt, 학생명은 13pt
+              // 학번은 9pt, 학생명은 13pt (폐강 과목이면 취소선 및 회색 톤)
               cSt.value = {
                 richText: [
-                  { text: `(${item.stId}) `, font: { name: '맑은 고딕', size: 9, color: { argb: 'FF475569' } } },
-                  { text: item.stName, font: { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } } }
+                  { 
+                    text: `(${item.stId}) `, 
+                    font: { 
+                      name: '맑은 고딕', 
+                      size: 9, 
+                      strike: isCanceled2,
+                      color: { argb: isCanceled2 ? 'FF94A3B8' : 'FF475569' } 
+                    } 
+                  },
+                  { 
+                    text: item.stName, 
+                    font: { 
+                      name: '맑은 고딕', 
+                      size: 13, 
+                      strike: isCanceled2,
+                      color: { argb: isCanceled2 ? 'FF94A3B8' : 'FF1E293B' } 
+                    } 
+                  }
                 ]
               };
             } else {
               cSt.value = item.stName;
-              cSt.font = { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } };
+              cSt.font = { 
+                name: '맑은 고딕', 
+                size: 13, 
+                strike: isCanceled2,
+                color: { argb: isCanceled2 ? 'FF94A3B8' : 'FF1E293B' } 
+              };
             }
           } else {
             cSt.value = '';
             cSt.font = { name: '맑은 고딕', size: 13 };
           }
 
-          // (학번) 학생명: 왼쪽 정렬 + 들여쓰기 1
+          // (학번) 학생명: 왼쪽 정렬
           cSt.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          // 폐강 과목인 경우 학생 셀 배경도 회색 처리!
+          if (isCanceled2) {
+            cSt.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE2E8F0' } // 폐강 연회색 배경
+            };
+          }
 
           this.applyBorder(cSub);
           this.applyBorder(cSt);
@@ -1326,12 +1405,13 @@ const ExcelService = {
           }
         }
 
-        // 2학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 파스텔 배경 + 좌측정렬/들여쓰기 1
+        // 2학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 배경색 채우기 + 좌측 정렬
         subSpans2.forEach(span => {
           const topRow = blockStartRow + span.start;
           const endRow = blockStartRow + span.end;
           const cell = sheet.getCell(topRow, colSub2);
           const color = getSubjectColor(span.subject);
+          const isCanceled = span.subject && getStatusText(statusMap2, span.subject) === '폐강';
 
           if (span.subject) {
             const stText = getStatusText(statusMap2, span.subject);
@@ -1347,7 +1427,8 @@ const ExcelService = {
                     name: '맑은 고딕',
                     size: 13,
                     bold: true,
-                    color: { argb: color ? color.text : 'FF1E293B' }
+                    strike: isCanceled, // 폐강 과목 취소선 적용
+                    color: { argb: isCanceled ? 'FF64748B' : (color ? color.text : 'FF1E293B') }
                   }
                 },
                 {
@@ -1367,19 +1448,33 @@ const ExcelService = {
 
           cell.alignment = { vertical: 'middle', horizontal: 'left' };
 
-          // 파스텔톤 배경색 채우기
-          if (color) {
+          // 배경색 채우기 (폐강 과목은 회색 #E2E8F0, 개설/조정은 고유 파스텔톤)
+          const fillBgColor = isCanceled ? 'FFE2E8F0' : (color ? color.bg : null);
+          if (fillBgColor) {
             for (let r = topRow; r <= endRow; r++) {
               const c = sheet.getCell(r, colSub2);
               c.fill = {
                 type: 'pattern',
                 pattern: 'solid',
-                fgColor: { argb: color.bg }
+                fgColor: { argb: fillBgColor }
               };
               this.applyBorder(c);
             }
           } else {
             this.applyBorder(cell);
+          }
+
+          // 폐강인 경우 학생 셀들 전체에도 회색 배경 재확인
+          if (isCanceled) {
+            for (let r = topRow; r <= endRow; r++) {
+              const cSt = sheet.getCell(r, colSt2);
+              cSt.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE2E8F0' }
+              };
+              this.applyBorder(cSt);
+            }
           }
         });
       });

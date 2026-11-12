@@ -578,6 +578,12 @@ const ExcelService = {
     const filePrefix = `${academicYear}학년도_${semester}학기_${schoolName}`;
     workbook.creator = `${schoolName} 시간표 시스템`;
 
+    // 5-0. [신규 탭] 1,2학기 통합시간표 시트 생성 (엑셀의 가장 첫 번째 탭 위치)
+    if (yearData && typeof yearData === 'object') {
+      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true }] });
+      this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText, subjectColorMap);
+    }
+
     // 5-1. 종합 시간표 시트 생성
     const totalSheet = workbook.addWorksheet('종합 시간표', { views: [{ showGridLines: true }] });
     this.buildTimetableSheet(totalSheet, periods, days, students, subjectColorMap, `${yearLabel} ${schoolName} 전체 종합 시간표`.trim());
@@ -743,27 +749,22 @@ const ExcelService = {
       });
     });
 
-    // 5-4. [신규 탭] 1,2학기 통합시간표 시트 생성 (1학기/2학기 다운로드 무관 항상 포함)
-    if (yearData && typeof yearData === 'object') {
-      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true }] });
-      this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText, subjectColorMap);
-    }
-
     const buffer = await workbook.xlsx.writeBuffer();
     this.saveFile(buffer, `${filePrefix}_학급_시간표_${this.getTimestamp()}.xlsx`);
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-              // =========================================================================
+                // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
-  // - [인쇄 설정] 가로 B4 1장에 꽉 차게 인쇄 (fitToWidth: 1, fitToHeight: 1, simplex)
-  // - [안내 사항] '안내 사항: ' 빨간색 18pt, 가로로 길게 입력, 글자 크기 18pt
+  // - [탭 위치] 엑셀 파일 내 가장 첫 번째 탭에 위치
+  // - [타이틀] '2027학년도 강원온라인학교 1,2학기 통합시간표', 글자크기 26pt
+  // - [안내사항] '안내사항: ' 빨간색 32pt, 나머지 본문 15pt, 가로로 길게 입력
+  // - [교시 표기] 시간 '~' 다음 줄바꿈: 5교시\n(13:40~\n14:30)
+  // - [과목명/상태] 줄바꿈 및 가운데 정렬: 과목명\n(개설상태) - 상태 글자크기 10pt
+  // - [셀 서식] 월~금 열에 있는 모든 데이터: '셀에 맞춤(shrinkToFit: true)' 설정
   // - [폐강 과목] 과목명 취소선(strike: true) 적용, 과목 및 학생 셀 배경 연회색(#E2E8F0) 처리
-  // - [상태 표기] 과목명 오른쪽에 (개설/조정/폐강) 표기 (글자 크기 10pt, 과목명 13pt)
-  // - 1학기/2학기 어떤 탭에서 다운로드하든 양 학기 데이터를 100% 온전히 추출 및 표시
-  // - 타이틀 제외 데이터 글자 크기 13pt, '(학번)' 부분은 9pt (Rich Text 적용)
-  // - 과목명에 연한 파스텔톤 배경색을 채워 시각적 구별성 강화 (과목별 고유 파스텔톤)
+  // - [인쇄 설정] 가로 B4 1장에 꽉 차게 인쇄 (fitToWidth: 1, fitToHeight: 1, simplex)
   // =========================================================================
   buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}) {
     const sem1Data = (yearData && yearData['1']) || {};
@@ -845,28 +846,28 @@ const ExcelService = {
       return '개설';
     };
 
-    // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열, 13pt 글자에 맞게 넉넉히 설정)
+    // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열)
     const columnsConfig = [
       { width: 16 } // A: 교시
     ];
     targetDays.forEach(() => {
-      columnsConfig.push({ width: 23 }); // 1학기 과목명 (상태 포함)
+      columnsConfig.push({ width: 23 }); // 1학기 과목명
       columnsConfig.push({ width: 20 }); // 1학기 (학번) 학생명
-      columnsConfig.push({ width: 23 }); // 2학기 과목명 (상태 포함)
+      columnsConfig.push({ width: 23 }); // 2학기 과목명
       columnsConfig.push({ width: 20 }); // 2학기 (학번) 학생명
     });
     sheet.columns = columnsConfig;
 
-    // 1행: 타이틀 (A1:U1 병합)
+    // 1행: 타이틀 -> [2027학년도 강원온라인학교 1,2학기 통합시간표] 글자크기 26pt
     sheet.mergeCells(1, 1, 1, 21);
     const titleCell = sheet.getCell(1, 1);
-    titleCell.value = `${academicYear}학년도 ${schoolName} 1·2학기 통합시간표`;
-    titleCell.font = { name: '맑은 고딕', size: 16, bold: true, color: { argb: 'FF1E293B' } };
+    titleCell.value = `${academicYear}학년도 강원온라인학교 1,2학기 통합시간표`;
+    titleCell.font = { name: '맑은 고딕', size: 26, bold: true, color: { argb: 'FF1E293B' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-    sheet.getRow(1).height = 42;
+    sheet.getRow(1).height = 54;
 
     let rowDayIdx = 2;
-    // 2행: 안내 사항이 있는 경우 강조 박스로 삽입 ('안내 사항: ' 빨간색 18pt, 가로로 길게 입력)
+    // 2행: 안내사항 -> '안내사항: ' 글자크기 32pt(빨간색), 나머지 15pt 가로로 길게 입력
     const trimmedNotice = (noticeText || '').trim();
     if (trimmedNotice) {
       sheet.mergeCells(2, 1, 2, 21);
@@ -876,17 +877,17 @@ const ExcelService = {
       noticeCell.value = {
         richText: [
           {
-            text: '안내 사항: ',
-            font: { name: '맑은 고딕', size: 18, bold: true, color: { argb: 'FFDC2626' } } // 빨간색 18pt
+            text: '안내사항: ',
+            font: { name: '맑은 고딕', size: 32, bold: true, color: { argb: 'FFDC2626' } } // 빨간색 32pt
           },
           {
             text: inlineNotice,
-            font: { name: '맑은 고딕', size: 18, bold: true, color: { argb: 'FF1E293B' } } // 본문 18pt
+            font: { name: '맑은 고딕', size: 15, bold: true, color: { argb: 'FF1E293B' } } // 본문 15pt
           }
         ]
       };
-      noticeCell.alignment = { vertical: 'middle', horizontal: 'left' };
-      sheet.getRow(2).height = 42; // 18pt 크기에 맞춘 시원한 행 높이
+      noticeCell.alignment = { vertical: 'middle', horizontal: 'left', shrinkToFit: true };
+      sheet.getRow(2).height = 52; // 32pt에 맞춘 시원한 행 높이
 
       for (let c = 1; c <= 21; c++) {
         const cell = sheet.getCell(2, c);
@@ -919,7 +920,7 @@ const ExcelService = {
       const dayCell = sheet.getCell(rowDayIdx, startCol);
       dayCell.value = day.name;
       dayCell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
-      dayCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      dayCell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
       for (let c = startCol; c <= endCol; c++) {
         const cell = sheet.getCell(rowDayIdx, c);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
@@ -939,7 +940,7 @@ const ExcelService = {
       const sem1Cell = sheet.getCell(rowSemIdx, colSem1);
       sem1Cell.value = '1학기';
       sem1Cell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF1D4ED8' } };
-      sem1Cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      sem1Cell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
       for (let c = colSem1; c <= colSem1 + 1; c++) {
         const cell = sheet.getCell(rowSemIdx, c);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
@@ -951,7 +952,7 @@ const ExcelService = {
       const sem2Cell = sheet.getCell(rowSemIdx, colSem2);
       sem2Cell.value = '2학기';
       sem2Cell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF4338CA' } };
-      sem2Cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      sem2Cell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
       for (let c = colSem2; c <= colSem2 + 1; c++) {
         const cell = sheet.getCell(rowSemIdx, c);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
@@ -969,7 +970,7 @@ const ExcelService = {
         const cell = sheet.getCell(rowSubjIdx, colBase + hIdx);
         cell.value = h;
         cell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF334155' } };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', shrinkToFit: true };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
         this.applyBorder(cell);
       });
@@ -990,16 +991,14 @@ const ExcelService = {
     const statusMap1 = sem1Data.courseStatus || {};
     const statusMap2 = sem2Data.courseStatus || {};
 
-    // =========================================================================
-    // ★ 특정 학기 데이터(semData)에서 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼
-    // =========================================================================
+    // 특정 학기 데이터(semData)에서 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼
     const getSlotItems = (semData, dayId, period) => {
       if (!semData || typeof semData !== 'object') return [];
 
       const periodIdStr = String(period.id);
       const periodNum = period.period;
 
-      // 1) 우선 semData.students 배열(시간표에 매핑된 최종 평탄화 데이터)이 있는 경우 최우선 활용
+      // 1) semData.students 배열(시간표에 매핑된 최종 평탄화 데이터) 최우선 활용
       if (Array.isArray(semData.students) && semData.students.length > 0) {
         const matching = semData.students.filter(s => {
           if (!s || !s.subject) return false;
@@ -1010,7 +1009,6 @@ const ExcelService = {
         });
 
         if (matching.length > 0) {
-          // 과목별로 학생 그룹화
           const subjectMap = new Map();
           matching.forEach(s => {
             if (!subjectMap.has(s.subject)) {
@@ -1029,7 +1027,6 @@ const ExcelService = {
           const sortedSubjects = Array.from(subjectMap.keys()).sort((a, b) => a.localeCompare(b, 'ko'));
           sortedSubjects.forEach(sub => {
             const stList = subjectMap.get(sub);
-            // 학번/이름순 정렬
             stList.sort((a, b) => {
               if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });
               return a.stName.localeCompare(b.stName, 'ko');
@@ -1047,12 +1044,11 @@ const ExcelService = {
         }
       }
 
-      // 2) semData.courseSchedules (배열 및 객체 모두 수용) 및 courseEnrollments 에서 직접 추출
+      // 2) semData.courseSchedules 및 courseEnrollments 에서 직접 추출
       const schedules = semData.courseSchedules || {};
       const enrollments = semData.courseEnrollments || {};
       const masterStudents = semData.masterStudents || [];
 
-      // masterStudents 맵 구축 (id 기준 및 name 기준 이중 맵)
       const masterIdMap = new Map();
       const masterNameMap = new Map();
       masterStudents.forEach(m => {
@@ -1063,11 +1059,8 @@ const ExcelService = {
       });
 
       const matchedSubjects = [];
-
       Object.entries(schedules).forEach(([subject, scheduleSlots]) => {
         if (!scheduleSlots) return;
-
-        // scheduleSlots 가 배열인 경우([ {day, periodId}, ... ])와 단일 객체인 경우 모두 지원
         const slotsArray = Array.isArray(scheduleSlots) ? scheduleSlots : [scheduleSlots];
         const isMatched = slotsArray.some(slot => {
           if (!slot || slot.day !== dayId) return false;
@@ -1089,7 +1082,6 @@ const ExcelService = {
         const studentItems = [];
 
         enrolled.forEach(stRef => {
-          // stRef 는 학생 id 일 수도 있고 name 일 수도 있음
           const m = masterIdMap.get(stRef) || masterNameMap.get(stRef);
           if (m) {
             studentItems.push({ stId: m.code || '', stName: m.name });
@@ -1098,7 +1090,6 @@ const ExcelService = {
           }
         });
 
-        // 정렬
         studentItems.sort((a, b) => {
           if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });
           return a.stName.localeCompare(b.stName, 'ko');
@@ -1118,14 +1109,12 @@ const ExcelService = {
 
     // 교시별 행 생성
     (periods || []).forEach(period => {
-      // 월~금 각각의 1학기/2학기 데이터 추출
       const daySlotsData = targetDays.map(day => {
         const items1 = getSlotItems(sem1Data, day.id, period);
         const items2 = getSlotItems(sem2Data, day.id, period);
         return { day, items1, items2 };
       });
 
-      // 이 교시 블록의 최대 행 수 계산
       let maxBlockRows = 1;
       daySlotsData.forEach(d => {
         const count = Math.max(d.items1.length, d.items2.length);
@@ -1140,13 +1129,14 @@ const ExcelService = {
         sheet.getRow(r).height = 29;
       }
 
-      // 교시 (A열) 세로 병합
+      // 교시 (A열) 세로 병합 및 시간 표기 ('~' 다음 줄바꿈)
       if (blockEndRow > blockStartRow) {
         sheet.mergeCells(blockStartRow, 1, blockEndRow, 1);
       }
       const periodCell = sheet.getCell(blockStartRow, 1);
-      periodCell.value = `${period.name}\n(${period.startTime}~${period.endTime})`;
-      periodCell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FF1E293B' } };
+      // ★ 사용자 요구사항: '~' 다음 줄바꿈하기
+      periodCell.value = `${period.name}\n(${period.startTime}~\n${period.endTime})`;
+      periodCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF1E293B' } };
       periodCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
 
       for (let r = blockStartRow; r <= blockEndRow; r++) {
@@ -1155,7 +1145,7 @@ const ExcelService = {
         this.applyBorder(cell);
       }
 
-      // 각 요일별 열 채우기
+      // 각 요일별 열 채우기 (월~금 열의 모든 데이터: '셀에 맞춤(shrinkToFit: true)')
       daySlotsData.forEach((d, dayIdx) => {
         const colSub1 = 2 + dayIdx * 4;
         const colSt1 = colSub1 + 1;
@@ -1177,7 +1167,6 @@ const ExcelService = {
 
           if (item) {
             if (item.stId) {
-              // 학번은 9pt, 학생명은 13pt (폐강 과목이면 취소선 및 회색 톤)
               cSt.value = {
                 richText: [
                   { 
@@ -1214,15 +1203,15 @@ const ExcelService = {
             cSt.font = { name: '맑은 고딕', size: 13 };
           }
 
-          // (학번) 학생명: 왼쪽 정렬
-          cSt.alignment = { vertical: 'middle', horizontal: 'left' };
+          // (학번) 학생명: 왼쪽 정렬 + 셀에 맞춤(shrinkToFit: true)
+          cSt.alignment = { vertical: 'middle', horizontal: 'left', shrinkToFit: true };
 
-          // 폐강 과목인 경우 학생 셀 배경도 회색 처리!
+          // 폐강 과목인 경우 학생 셀 배경도 회색 처리
           if (isCanceled1) {
             cSt.fill = {
               type: 'pattern',
               pattern: 'solid',
-              fgColor: { argb: 'FFE2E8F0' } // 폐강 연회색 배경
+              fgColor: { argb: 'FFE2E8F0' }
             };
           }
 
@@ -1247,7 +1236,7 @@ const ExcelService = {
           }
         }
 
-        // 1학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 배경색 채우기 + 좌측 정렬
+        // 1학기: 3) 병합 완료 후 -> 과목명 13pt, 줄바꿈, (개설상태) 10pt 가운데 정렬 + 셀에 맞춤
         subSpans1.forEach(span => {
           const topRow = blockStartRow + span.start;
           const endRow = blockStartRow + span.end;
@@ -1261,20 +1250,21 @@ const ExcelService = {
             if (stText === '조정') stColor = 'FFD97706'; // 조정: 진한 주황
             else if (stText === '폐강') stColor = 'FFDC2626'; // 폐강: 진한 빨강
 
+            // ★ 사용자 요구사항: '과목명' '개설상태' 줄바꿈하기. 과목명 -줄바꿈-(개설상태). '개설상태'는 가운데 정렬
             cell.value = {
               richText: [
                 {
-                  text: span.subject + ' ',
+                  text: span.subject,
                   font: {
                     name: '맑은 고딕',
                     size: 13,
                     bold: true,
-                    strike: isCanceled, // 폐강 과목 취소선 적용
+                    strike: isCanceled,
                     color: { argb: isCanceled ? 'FF64748B' : (color ? color.text : 'FF1E293B') }
                   }
                 },
                 {
-                  text: `(${stText})`,
+                  text: `\n(${stText})`,
                   font: {
                     name: '맑은 고딕',
                     size: 10,
@@ -1288,7 +1278,8 @@ const ExcelService = {
             cell.value = '';
           }
 
-          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          // 가운데 정렬, 줄바꿈 허용, 셀에 맞춤 설정
+          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true, shrinkToFit: true };
 
           // 배경색 채우기 (폐강 과목은 회색 #E2E8F0, 개설/조정은 고유 파스텔톤)
           const fillBgColor = isCanceled ? 'FFE2E8F0' : (color ? color.bg : null);
@@ -1300,13 +1291,13 @@ const ExcelService = {
                 pattern: 'solid',
                 fgColor: { argb: fillBgColor }
               };
+              c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true, shrinkToFit: true };
               this.applyBorder(c);
             }
           } else {
             this.applyBorder(cell);
           }
 
-          // 폐강인 경우 학생 셀들 전체에도 회색 배경 재확인
           if (isCanceled) {
             for (let r = topRow; r <= endRow; r++) {
               const cSt = sheet.getCell(r, colSt1);
@@ -1335,7 +1326,6 @@ const ExcelService = {
 
           if (item) {
             if (item.stId) {
-              // 학번은 9pt, 학생명은 13pt (폐강 과목이면 취소선 및 회색 톤)
               cSt.value = {
                 richText: [
                   { 
@@ -1372,15 +1362,14 @@ const ExcelService = {
             cSt.font = { name: '맑은 고딕', size: 13 };
           }
 
-          // (학번) 학생명: 왼쪽 정렬
-          cSt.alignment = { vertical: 'middle', horizontal: 'left' };
+          // (학번) 학생명: 왼쪽 정렬 + 셀에 맞춤(shrinkToFit: true)
+          cSt.alignment = { vertical: 'middle', horizontal: 'left', shrinkToFit: true };
 
-          // 폐강 과목인 경우 학생 셀 배경도 회색 처리!
           if (isCanceled2) {
             cSt.fill = {
               type: 'pattern',
               pattern: 'solid',
-              fgColor: { argb: 'FFE2E8F0' } // 폐강 연회색 배경
+              fgColor: { argb: 'FFE2E8F0' }
             };
           }
 
@@ -1405,7 +1394,7 @@ const ExcelService = {
           }
         }
 
-        // 2학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 배경색 채우기 + 좌측 정렬
+        // 2학기: 3) 병합 완료 후 -> 과목명 13pt, 줄바꿈, (개설상태) 10pt 가운데 정렬 + 셀에 맞춤
         subSpans2.forEach(span => {
           const topRow = blockStartRow + span.start;
           const endRow = blockStartRow + span.end;
@@ -1419,20 +1408,21 @@ const ExcelService = {
             if (stText === '조정') stColor = 'FFD97706'; // 조정: 진한 주황
             else if (stText === '폐강') stColor = 'FFDC2626'; // 폐강: 진한 빨강
 
+            // ★ 사용자 요구사항: '과목명' '개설상태' 줄바꿈하기. 과목명 -줄바꿈-(개설상태). '개설상태'는 가운데 정렬
             cell.value = {
               richText: [
                 {
-                  text: span.subject + ' ',
+                  text: span.subject,
                   font: {
                     name: '맑은 고딕',
                     size: 13,
                     bold: true,
-                    strike: isCanceled, // 폐강 과목 취소선 적용
+                    strike: isCanceled,
                     color: { argb: isCanceled ? 'FF64748B' : (color ? color.text : 'FF1E293B') }
                   }
                 },
                 {
-                  text: `(${stText})`,
+                  text: `\n(${stText})`,
                   font: {
                     name: '맑은 고딕',
                     size: 10,
@@ -1446,7 +1436,8 @@ const ExcelService = {
             cell.value = '';
           }
 
-          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          // 가운데 정렬, 줄바꿈 허용, 셀에 맞춤 설정
+          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true, shrinkToFit: true };
 
           // 배경색 채우기 (폐강 과목은 회색 #E2E8F0, 개설/조정은 고유 파스텔톤)
           const fillBgColor = isCanceled ? 'FFE2E8F0' : (color ? color.bg : null);
@@ -1458,13 +1449,13 @@ const ExcelService = {
                 pattern: 'solid',
                 fgColor: { argb: fillBgColor }
               };
+              c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true, shrinkToFit: true };
               this.applyBorder(c);
             }
           } else {
             this.applyBorder(cell);
           }
 
-          // 폐강인 경우 학생 셀들 전체에도 회색 배경 재확인
           if (isCanceled) {
             for (let r = topRow; r <= endRow; r++) {
               const cSt = sheet.getCell(r, colSt2);

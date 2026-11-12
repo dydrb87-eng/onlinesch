@@ -645,7 +645,7 @@ const ExcelService = {
       const st = courseStatus[sub] || 'open';
       if (st === 'closed') return '폐강';
       if (st === 'adjust') return '조정';
-      if (st === 'excluded') return '제외';
+      if (st === 'excluded') return '폐강'; // '제외'는 폐강으로 표기
       return '개설';
     };
 
@@ -754,11 +754,12 @@ const ExcelService = {
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-          // =========================================================================
+            // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
+  // - [인쇄 설정] 여백: 좁게, 용지 방향: 가로, 크기: B4, 인쇄제목 반복할 행: 1~5행
+  // - [상태 표기] 과목명 오른쪽에 (개설/조정/폐강) 표기 (글자 크기 10pt, 과목명 13pt)
   // - 1학기/2학기 어떤 탭에서 다운로드하든 양 학기 데이터를 100% 온전히 추출 및 표시
-  // - semData.students 및 semData.courseSchedules(배열/단일슬롯)/enrollments 다중 소스 지원
   // - 타이틀 제외 데이터 글자 크기 13pt, '(학번)' 부분은 9pt (Rich Text 적용)
   // - 과목명에 연한 파스텔톤 배경색을 채워 시각적 구별성 강화 (과목별 고유 파스텔톤)
   // - '과목명'은 세로 병합을 먼저 수행한 후 파스텔 배경 및 왼쪽 정렬/들여쓰기 1(indent: 1) 적용
@@ -767,6 +768,26 @@ const ExcelService = {
   buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}) {
     const sem1Data = (yearData && yearData['1']) || {};
     const sem2Data = (yearData && yearData['2']) || {};
+
+    // -------------------------------------------------------------------------
+    // ★ 페이지 인쇄 설정: 여백 좁게, 가로 방향, B4 크기, 인쇄제목 1~5행 반복
+    // -------------------------------------------------------------------------
+    sheet.pageSetup = {
+      orientation: 'landscape',  // 용지 방향: 가로
+      paperSize: 12,            // 크기: B4 (JIS)
+      margins: {                // 여백: 좁게 (Narrow)
+        left: 0.25,
+        right: 0.25,
+        top: 0.75,
+        bottom: 0.75,
+        header: 0.3,
+        footer: 0.3
+      },
+      printTitlesRow: '1:5',    // 인쇄제목 - 반복할 행 : 1~5행
+      fitToPage: true,          // 페이지 맞춤
+      fitToWidth: 1,            // 가로 1페이지 폭에 맞춤
+      fitToHeight: 0            // 세로는 내용에 따라 자동 분할
+    };
 
     const targetDays = [
       { id: 'mon', name: '월요일' },
@@ -814,14 +835,24 @@ const ExcelService = {
       return softPastelPalette[idx];
     };
 
+    // 과목 상태 텍스트 판정 헬퍼 ('제외'는 '폐강'으로 표기)
+    const getStatusText = (statusMap, subName) => {
+      if (!statusMap) return '개설';
+      const st = statusMap[subName] || 'open';
+      if (st === 'closed' || st === '폐강') return '폐강';
+      if (st === 'adjust' || st === '조정') return '조정';
+      if (st === 'excluded' || st === '제외') return '폐강';
+      return '개설';
+    };
+
     // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열, 13pt 글자에 맞게 넉넉히 설정)
     const columnsConfig = [
       { width: 16 } // A: 교시
     ];
     targetDays.forEach(() => {
-      columnsConfig.push({ width: 22 }); // 1학기 과목명
+      columnsConfig.push({ width: 23 }); // 1학기 과목명 (상태 포함)
       columnsConfig.push({ width: 20 }); // 1학기 (학번) 학생명
-      columnsConfig.push({ width: 22 }); // 2학기 과목명
+      columnsConfig.push({ width: 23 }); // 2학기 과목명 (상태 포함)
       columnsConfig.push({ width: 20 }); // 2학기 (학번) 학생명
     });
     sheet.columns = columnsConfig;
@@ -946,6 +977,9 @@ const ExcelService = {
       this.applyBorder(cell);
     }
 
+    const statusMap1 = sem1Data.courseStatus || {};
+    const statusMap2 = sem2Data.courseStatus || {};
+
     // =========================================================================
     // ★ 특정 학기 데이터(semData)에서 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼
     // =========================================================================
@@ -954,13 +988,11 @@ const ExcelService = {
 
       const periodIdStr = String(period.id);
       const periodNum = period.period;
-      const statusMap = semData.courseStatus || {};
 
       // 1) 우선 semData.students 배열(시간표에 매핑된 최종 평탄화 데이터)이 있는 경우 최우선 활용
       if (Array.isArray(semData.students) && semData.students.length > 0) {
         const matching = semData.students.filter(s => {
           if (!s || !s.subject) return false;
-          if (statusMap[s.subject] === '폐강') return false;
           if (s.day !== dayId) return false;
           const matchPeriodId = s.periodId && String(s.periodId) === periodIdStr;
           const matchPeriodNum = s.period !== undefined && s.period !== null && s.period === periodNum;
@@ -1024,7 +1056,6 @@ const ExcelService = {
 
       Object.entries(schedules).forEach(([subject, scheduleSlots]) => {
         if (!scheduleSlots) return;
-        if (statusMap[subject] === '폐강') return;
 
         // scheduleSlots 가 배열인 경우([ {day, periodId}, ... ])와 단일 객체인 경우 모두 지원
         const slotsArray = Array.isArray(scheduleSlots) ? scheduleSlots : [scheduleSlots];
@@ -1114,11 +1145,7 @@ const ExcelService = {
         this.applyBorder(cell);
       }
 
-      // 각 요일별 열 채우기:
-      // ★ 사용자 요구사항: 
-      // 1) "타이틀 제외, 데이터의 글자 크기는 13으로. '(학번)'에 해당하는 값은 9로."
-      // 2) "'과목명'은 병합을 먼저 한 후 왼쪽 정렬, 들여쓰기 적용의 순서로 해줘"
-      // 3) "과목명에 색을 채워서 구별되게 하기. 진한 색이 아닌 연한 파스텔톤."
+      // 각 요일별 열 채우기
       daySlotsData.forEach((d, dayIdx) => {
         const colSub1 = 2 + dayIdx * 4;
         const colSt1 = colSub1 + 1;
@@ -1178,19 +1205,45 @@ const ExcelService = {
           }
         }
 
-        // 1학기: 3) 병합 완료 후 -> 연한 파스텔톤 배경 채우기 + 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1 적용
+        // 1학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 파스텔 배경 + 좌측정렬/들여쓰기 1
         subSpans1.forEach(span => {
           const topRow = blockStartRow + span.start;
           const endRow = blockStartRow + span.end;
           const cell = sheet.getCell(topRow, colSub1);
           const color = getSubjectColor(span.subject);
 
-          cell.font = { 
-            name: '맑은 고딕', 
-            size: 13, 
-            bold: true, 
-            color: { argb: color ? color.text : 'FF1E293B' } 
-          };
+          if (span.subject) {
+            const stText = getStatusText(statusMap1, span.subject);
+            let stColor = 'FF059669'; // 개설: 진한 초록
+            if (stText === '조정') stColor = 'FFD97706'; // 조정: 진한 주황
+            else if (stText === '폐강') stColor = 'FFDC2626'; // 폐강: 진한 빨강
+
+            cell.value = {
+              richText: [
+                {
+                  text: span.subject + ' ',
+                  font: {
+                    name: '맑은 고딕',
+                    size: 13,
+                    bold: true,
+                    color: { argb: color ? color.text : 'FF1E293B' }
+                  }
+                },
+                {
+                  text: `(${stText})`,
+                  font: {
+                    name: '맑은 고딕',
+                    size: 10,
+                    bold: true,
+                    color: { argb: stColor }
+                  }
+                }
+              ]
+            };
+          } else {
+            cell.value = '';
+          }
+
           cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
           // 파스텔톤 배경색 채우기
@@ -1262,19 +1315,45 @@ const ExcelService = {
           }
         }
 
-        // 2학기: 3) 병합 완료 후 -> 연한 파스텔톤 배경 채우기 + 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1 적용
+        // 2학기: 3) 병합 완료 후 -> 과목명 13pt + (개설/조정/폐강) 10pt + 파스텔 배경 + 좌측정렬/들여쓰기 1
         subSpans2.forEach(span => {
           const topRow = blockStartRow + span.start;
           const endRow = blockStartRow + span.end;
           const cell = sheet.getCell(topRow, colSub2);
           const color = getSubjectColor(span.subject);
 
-          cell.font = { 
-            name: '맑은 고딕', 
-            size: 13, 
-            bold: true, 
-            color: { argb: color ? color.text : 'FF1E293B' } 
-          };
+          if (span.subject) {
+            const stText = getStatusText(statusMap2, span.subject);
+            let stColor = 'FF059669'; // 개설: 진한 초록
+            if (stText === '조정') stColor = 'FFD97706'; // 조정: 진한 주황
+            else if (stText === '폐강') stColor = 'FFDC2626'; // 폐강: 진한 빨강
+
+            cell.value = {
+              richText: [
+                {
+                  text: span.subject + ' ',
+                  font: {
+                    name: '맑은 고딕',
+                    size: 13,
+                    bold: true,
+                    color: { argb: color ? color.text : 'FF1E293B' }
+                  }
+                },
+                {
+                  text: `(${stText})`,
+                  font: {
+                    name: '맑은 고딕',
+                    size: 10,
+                    bold: true,
+                    color: { argb: stColor }
+                  }
+                }
+              ]
+            };
+          } else {
+            cell.value = '';
+          }
+
           cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
           // 파스텔톤 배경색 채우기

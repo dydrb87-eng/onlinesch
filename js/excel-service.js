@@ -572,7 +572,7 @@ const ExcelService = {
   },
 
   // 5. 결괏값 형태 1: 학급 시간표 형태 (파스텔톤 디자인 멀티시트 엑셀)
-  async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교', courseEnrollments = null, masterStudents = null) {
+  async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교', courseEnrollments = null, masterStudents = null, courseStatus = null) {
     const workbook = new ExcelJS.Workbook();
     const yearLabel = `${academicYear}학년도 ${semester}학기`;
     const filePrefix = `${academicYear}학년도_${semester}학기_${schoolName}`;
@@ -611,15 +611,19 @@ const ExcelService = {
       );
     }
 
-    // 5-3. [신규 탭] 수강자 전체 명단 시트 구성 (항목: 학년도, 학기, 과목명, 학번, 학생 이름)
+    // 5-3. [수강자 전체 명단] 시트 구성 (항목: 학년도, 학기, 과목명, 학번, 학생 이름, 개설/조정/폐강)
     const rosterSheet = workbook.addWorksheet('수강자 전체 명단', { views: [{ showGridLines: true }] });
     rosterSheet.columns = [
-      { header: '학년도', key: 'academicYear', width: 15 },
-      { header: '학기', key: 'semester', width: 12 },
+      { header: '학년도', key: 'academicYear', width: 14 },
+      { header: '학기', key: 'semester', width: 11 },
       { header: '과목명', key: 'subject', width: 28 },
       { header: '학번', key: 'studentCode', width: 14 },
-      { header: '학생 이름', key: 'studentName', width: 18 }
+      { header: '학생 이름', key: 'studentName', width: 16 },
+      { header: '개설/조정/폐강', key: 'statusText', width: 16 }
     ];
+
+    // 자동 필터 적용 (A1부터 F1까지 드롭다운 필터 생성)
+    rosterSheet.autoFilter = 'A1:F1';
 
     // 헤더 행 스타일
     const rHeaderRow = rosterSheet.getRow(1);
@@ -635,7 +639,17 @@ const ExcelService = {
       this.applyBorder(cell);
     });
 
-    // 수강자 행 데이터 작성
+    // 과목 상태 텍스트 판정 헬퍼
+    const getStatusLabel = (sub) => {
+      if (!courseStatus) return '개설';
+      const st = courseStatus[sub] || 'open';
+      if (st === 'closed') return '폐강';
+      if (st === 'adjust') return '조정';
+      if (st === 'excluded') return '제외';
+      return '개설';
+    };
+
+    // 수강자 목록 데이터 작성
     const rosterRows = [];
     const studentMasterMap = new Map();
     if (masterStudents && Array.isArray(masterStudents)) {
@@ -643,9 +657,9 @@ const ExcelService = {
     }
 
     if (courseEnrollments && typeof courseEnrollments === 'object') {
-      // 과목 수강자(courseEnrollments) 기반 추출
       Object.entries(courseEnrollments).forEach(([subject, studentIds]) => {
         if (!Array.isArray(studentIds)) return;
+        const statusText = getStatusLabel(subject);
         studentIds.forEach(id => {
           const m = studentMasterMap.get(id);
           if (m) {
@@ -656,7 +670,7 @@ const ExcelService = {
               subject: subject,
               studentCode: code,
               studentName: m.name,
-              sortKey: `${code}_${subject}`
+              statusText: statusText
             });
           }
         });
@@ -672,20 +686,25 @@ const ExcelService = {
         const key = `${code}_${s.subject}`;
         if (!seen.has(key)) {
           seen.add(key);
+          const statusText = getStatusLabel(s.subject);
           rosterRows.push({
             academicYear: `${academicYear}학년도`,
             semester: `${semester}학기`,
             subject: s.subject,
             studentCode: code,
             studentName: s.name,
-            sortKey: `${code}_${s.subject}`
+            statusText: statusText
           });
         }
       });
     }
 
-    // 학번 -> 과목명 순 정렬
-    rosterRows.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'ko'));
+    // 정렬: 1순위 과목명 가나다순, 2순위 학번 오름차순 정렬
+    rosterRows.sort((a, b) => {
+      const subComp = (a.subject || '').localeCompare(b.subject || '', 'ko');
+      if (subComp !== 0) return subComp;
+      return (a.studentCode || '').localeCompare(b.studentCode || '', 'ko', { numeric: true });
+    });
 
     // 데이터 행 추가
     rosterRows.forEach((rData, idx) => {
@@ -694,7 +713,8 @@ const ExcelService = {
         semester: rData.semester,
         subject: rData.subject,
         studentCode: rData.studentCode,
-        studentName: rData.studentName
+        studentName: rData.studentName,
+        statusText: rData.statusText
       });
       row.height = 24;
       const isEven = idx % 2 === 1;
@@ -702,6 +722,18 @@ const ExcelService = {
       row.eachCell((cell, colNum) => {
         cell.font = { name: '맑은 고딕', size: 10, color: { argb: 'FF1E293B' } };
         cell.alignment = { vertical: 'middle', horizontal: colNum === 3 ? 'left' : 'center' };
+
+        // 6열: 개설/조정/폐강 상태별 텍스트 색상
+        if (colNum === 6) {
+          if (rData.statusText === '개설') {
+            cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FF059669' } }; // 진한 초록
+          } else if (rData.statusText === '조정') {
+            cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FFD97706' } }; // 진한 주황/노랑
+          } else if (rData.statusText === '폐강') {
+            cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FFDC2626' } }; // 진한 빨강
+          }
+        }
+
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',

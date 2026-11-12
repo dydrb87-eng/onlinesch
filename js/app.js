@@ -1070,7 +1070,7 @@ class TimetableApp {
     // 9. 엑셀 다운로드 (학급 시간표 & 원천 데이터)
     document.getElementById('btn-export-timetable')?.addEventListener('click', () => {
       const activeDays = this.showWeekends ? this.days : this.days.filter(d => !d.isWeekend);
-      ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '상지대관령고', this.courseEnrollments, this.masterStudents);
+      ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '상지대관령고', this.courseEnrollments, this.masterStudents, this.courseStatus);
       this.showToast(`[${this.activeYear}학년도 ${this.activeSemester}학기] 학급 시간표 엑셀이 다운로드됩니다.`);
     });
 

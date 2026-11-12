@@ -575,27 +575,40 @@ const ExcelService = {
   // 5. 결괏값 형태 1: 학급 시간표 형태 (파스텔톤 디자인 멀티시트 엑셀)
   async exportTimetableExcel(periods, days, students, subjectColorMap, academicYear = '2026', semester = '1', schoolName = '강원온라인학교', courseEnrollments = null, masterStudents = null, courseStatus = null, yearData = null, noticeText = '') {
     const workbook = new ExcelJS.Workbook();
-    const yearLabel = `${academicYear}학년도 ${semester}학기`;
-    const filePrefix = `${academicYear}학년도_${semester}학기_${schoolName}`;
     workbook.creator = `${schoolName} 시간표 시스템`;
 
-    // 5-0. [신규 탭] 1,2학기 통합시간표 시트 생성 (엑셀의 가장 첫 번째 탭 위치)
+    // 5-0. [1,2학기 통합시간표] 시트 생성 (엑셀의 가장 첫 번째 탭 위치)
     if (yearData && typeof yearData === 'object') {
       const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true, zoomScale: 40 }] });
       this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText, subjectColorMap);
     }
 
-    // 5-1. 종합 시간표 시트 생성
-    const totalSheet = workbook.addWorksheet('종합 시간표', { views: [{ showGridLines: true }] });
-    this.buildTimetableSheet(totalSheet, periods, days, students, subjectColorMap, `${yearLabel} ${schoolName} 전체 종합 시간표`.trim());
-
-    // 5-2. 학년-반별 개별 시트 자동 생성
+    // 5-1. 학년-반별 개별 시트 자동 생성
+    // ★ '1,2학기 통합시간표' 양식을 모두 따르되, 해당 학년/반 학생이 수강하는 과목만 표시 (함께 듣는 다른 반 학생도 함께 표기)
     const classSet = new Set();
-    students.forEach(s => {
-      if (s.grade && s.classNum) {
-        classSet.add(`${s.grade}-${s.classNum}`);
+    const collectClasses = (semData) => {
+      if (!semData) return;
+      if (Array.isArray(semData.masterStudents)) {
+        semData.masterStudents.forEach(m => {
+          if (m && m.grade && m.classNum) classSet.add(`${m.grade}-${m.classNum}`);
+        });
       }
-    });
+      if (Array.isArray(semData.students)) {
+        semData.students.forEach(s => {
+          if (s && s.grade && s.classNum) classSet.add(`${s.grade}-${s.classNum}`);
+        });
+      }
+    };
+
+    if (yearData && typeof yearData === 'object') {
+      collectClasses(yearData['1']);
+      collectClasses(yearData['2']);
+    }
+    if (students && Array.isArray(students)) {
+      students.forEach(s => {
+        if (s && s.grade && s.classNum) classSet.add(`${s.grade}-${s.classNum}`);
+      });
+    }
 
     const sortedClasses = Array.from(classSet).sort((a, b) => {
       const [gA, cA] = a.split('-').map(Number);
@@ -606,19 +619,20 @@ const ExcelService = {
     for (const cls of sortedClasses) {
       const [grade, classNum] = cls.split('-').map(Number);
       const sheetName = `${grade}학년 ${classNum}반`;
-      const classStudents = students.filter(s => s.grade === grade && s.classNum === classNum);
-      const classSheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: true }] });
-      this.buildTimetableSheet(
+      const classSheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: true, zoomScale: 40 }] });
+      this.buildUnifiedSemesterTimetableSheet(
         classSheet,
         periods,
-        days,
-        classStudents,
+        academicYear,
+        schoolName,
+        yearData,
+        noticeText,
         subjectColorMap,
-        `${yearLabel} ${schoolName} [${grade}학년 ${classNum}반] 시간표`.trim()
+        { grade, classNum }
       );
     }
 
-    // 5-3. [수강자 전체 명단] 시트 구성 (항목: 학년도, 학기, 과목명, 학번, 학생 이름, 개설/조정/폐강)
+    // 5-2. [수강자 전체 명단] 시트 구성 (1,2학기 구분 없이 전체 대상, 정렬: 학기 -> 과목명 -> 학번 -> 이름)
     const rosterSheet = workbook.addWorksheet('수강자 전체 명단', { views: [{ showGridLines: true }] });
     rosterSheet.columns = [
       { header: '학년도', key: 'academicYear', width: 14 },
@@ -646,71 +660,121 @@ const ExcelService = {
       this.applyBorder(cell);
     });
 
-    // 과목 상태 텍스트 판정 헬퍼
-    const getStatusLabel = (sub) => {
-      if (!courseStatus) return '개설';
-      const st = courseStatus[sub] || 'open';
-      if (st === 'closed') return '폐강';
-      if (st === 'adjust') return '조정';
-      if (st === 'excluded') return '폐강'; // '제외'는 폐강으로 표기
+    const getStatusLabelForSem = (statusMap, sub) => {
+      if (!statusMap) return '개설';
+      const st = statusMap[sub] || 'open';
+      if (st === 'closed' || st === '폐강') return '폐강';
+      if (st === 'adjust' || st === '조정') return '조정';
+      if (st === 'excluded' || st === '제외') return '폐강'; // '제외'는 폐강으로 표기
       return '개설';
     };
 
-    // 수강자 목록 데이터 작성
     const rosterRows = [];
-    const studentMasterMap = new Map();
-    if (masterStudents && Array.isArray(masterStudents)) {
-      masterStudents.forEach(m => studentMasterMap.set(m.id, m));
-    }
 
-    if (courseEnrollments && typeof courseEnrollments === 'object') {
-      Object.entries(courseEnrollments).forEach(([subject, studentIds]) => {
-        if (!Array.isArray(studentIds)) return;
-        const statusText = getStatusLabel(subject);
-        studentIds.forEach(id => {
-          const m = studentMasterMap.get(id);
-          if (m) {
-            const code = m.studentCode || this.getStudentCode(m);
+    const extractRosterForSemester = (semData, semNum) => {
+      if (!semData || typeof semData !== 'object') return;
+      const semLabel = `${semNum}학기`;
+      const statusMap = semData.courseStatus || {};
+      const enrollments = semData.courseEnrollments || {};
+      const masterStudents = semData.masterStudents || [];
+      const masterMap = new Map();
+      masterStudents.forEach(m => {
+        if (!m) return;
+        const code = m.studentCode || (m.grade && m.classNum && m.studentNum ? `${m.grade}${String(m.classNum).padStart(2,'0')}${String(m.studentNum).padStart(2,'0')}` : '');
+        if (m.id) masterMap.set(m.id, { code, name: m.name });
+        if (m.name) masterMap.set(m.name, { code, name: m.name });
+      });
+
+      let addedFromEnroll = false;
+      if (enrollments && typeof enrollments === 'object') {
+        Object.entries(enrollments).forEach(([subject, studentIds]) => {
+          if (!Array.isArray(studentIds) || studentIds.length === 0) return;
+          addedFromEnroll = true;
+          const statusText = getStatusLabelForSem(statusMap, subject);
+          studentIds.forEach(id => {
+            const m = masterMap.get(id);
+            const code = m ? m.code : '';
+            const name = m ? m.name : String(id);
+            rosterRows.push({
+              academicYear: `${academicYear}학년도`,
+              semester: semLabel,
+              subject: subject,
+              studentCode: code,
+              studentName: name,
+              statusText: statusText
+            });
+          });
+        });
+      }
+
+      if (!addedFromEnroll && Array.isArray(semData.students)) {
+        const seen = new Set();
+        semData.students.forEach(s => {
+          if (!s || !s.subject || !s.name) return;
+          const code = s.studentCode || (s.grade && s.classNum && s.studentNum ? `${s.grade}${String(s.classNum).padStart(2,'0')}${String(s.studentNum).padStart(2,'0')}` : '');
+          const key = `${semLabel}_${code}_${s.subject}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            const statusText = getStatusLabelForSem(statusMap, s.subject);
+            rosterRows.push({
+              academicYear: `${academicYear}학년도`,
+              semester: semLabel,
+              subject: s.subject,
+              studentCode: code,
+              studentName: s.name,
+              statusText: statusText
+            });
+          }
+        });
+      }
+    };
+
+    if (yearData && typeof yearData === 'object') {
+      extractRosterForSemester(yearData['1'], 1);
+      extractRosterForSemester(yearData['2'], 2);
+    } else {
+      // Fallback
+      if (courseEnrollments && typeof courseEnrollments === 'object') {
+        const studentMasterMap = new Map();
+        if (masterStudents && Array.isArray(masterStudents)) {
+          masterStudents.forEach(m => studentMasterMap.set(m.id, m));
+        }
+        Object.entries(courseEnrollments).forEach(([subject, studentIds]) => {
+          if (!Array.isArray(studentIds)) return;
+          const statusText = getStatusLabelForSem(courseStatus, subject);
+          studentIds.forEach(id => {
+            const m = studentMasterMap.get(id);
+            const code = m ? (m.studentCode || this.getStudentCode(m)) : '';
+            const name = m ? m.name : String(id);
             rosterRows.push({
               academicYear: `${academicYear}학년도`,
               semester: `${semester}학기`,
               subject: subject,
               studentCode: code,
-              studentName: m.name,
+              studentName: name,
               statusText: statusText
             });
-          }
-        });
-      });
-    }
-
-    // 만약 courseEnrollments가 비어있거나 없는 경우 students 배열에서 유니크하게 추출
-    if (rosterRows.length === 0 && students && Array.isArray(students)) {
-      const seen = new Set();
-      students.forEach(s => {
-        if (!s.subject || !s.name) return;
-        const code = s.studentCode || this.getStudentCode(s);
-        const key = `${code}_${s.subject}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          const statusText = getStatusLabel(s.subject);
-          rosterRows.push({
-            academicYear: `${academicYear}학년도`,
-            semester: `${semester}학기`,
-            subject: s.subject,
-            studentCode: code,
-            studentName: s.name,
-            statusText: statusText
           });
-        }
-      });
+        });
+      }
     }
 
-    // 정렬: 1순위 과목명 가나다순, 2순위 학번 오름차순 정렬
+    // ★ 정렬 우선순위: 1순위 학기, 2순위 과목명, 3순위 학번, 4순위 이름 순서
     rosterRows.sort((a, b) => {
+      // 1순위: 학기 (1학기 -> 2학기)
+      const semComp = (a.semester || '').localeCompare(b.semester || '', 'ko', { numeric: true });
+      if (semComp !== 0) return semComp;
+
+      // 2순위: 과목명 (가나다순)
       const subComp = (a.subject || '').localeCompare(b.subject || '', 'ko');
       if (subComp !== 0) return subComp;
-      return (a.studentCode || '').localeCompare(b.studentCode || '', 'ko', { numeric: true });
+
+      // 3순위: 학번 (오름차순)
+      const codeComp = (a.studentCode || '').localeCompare(b.studentCode || '', 'ko', { numeric: true });
+      if (codeComp !== 0) return codeComp;
+
+      // 4순위: 이름 (가나다순)
+      return (a.studentName || '').localeCompare(b.studentName || '', 'ko');
     });
 
     // 데이터 행 추가
@@ -751,7 +815,9 @@ const ExcelService = {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    this.saveFile(buffer, `${filePrefix}_학급_시간표_${this.getTimestamp()}.xlsx`);
+    // ★ 다운로드 시 파일명: 2027학년도_강원온라인학교_학급별_시간표_20261112_1745.xlsx
+    const fileName = `${academicYear}학년도_${schoolName}_학급별_시간표_${this.getTimestamp()}.xlsx`;
+    this.saveFile(buffer, fileName);
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
@@ -769,7 +835,7 @@ const ExcelService = {
   // - [폐강 과목] 과목명 취소선(strike: true) 적용, 과목 및 학생 셀 배경 연회색(#E2E8F0) 처리
   // - [인쇄 설정] 가로 B4 1장에 꽉 차게 인쇄 (fitToWidth: 1, fitToHeight: 1, simplex)
   // =========================================================================
-  buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}) {
+  buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}, classFilter = null) {
     const sem1Data = (yearData && yearData['1']) || {};
     const sem2Data = (yearData && yearData['2']) || {};
 
@@ -872,10 +938,14 @@ const ExcelService = {
     });
     sheet.columns = columnsConfig;
 
-    // 1행: 타이틀 -> [2027학년도 강원온라인학교 1,2학기 통합시간표] 글자크기 26pt
+    // 1행: 타이틀 -> [2027학년도 강원온라인학교 1,2학기 통합시간표] 또는 [2027학년도 강원온라인학교 [2학년 1반] 1,2학기 시간표]
     sheet.mergeCells(1, 1, 1, 21);
     const titleCell = sheet.getCell(1, 1);
-    titleCell.value = `${academicYear}학년도 강원온라인학교 1,2학기 통합시간표`;
+    if (classFilter) {
+      titleCell.value = `${academicYear}학년도 ${schoolName} [${classFilter.grade}학년 ${classFilter.classNum}반] 1,2학기 시간표`;
+    } else {
+      titleCell.value = `${academicYear}학년도 ${schoolName} 1,2학기 통합시간표`;
+    }
     titleCell.font = { name: '맑은 고딕', size: 26, bold: true, color: { argb: 'FF1E293B' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
     sheet.getRow(1).height = 54;
@@ -1030,9 +1100,13 @@ const ExcelService = {
             }
             if (s.name) {
               const code = s.studentCode || (s.grade && s.classNum && s.studentNum ? `${s.grade}${String(s.classNum).padStart(2,'0')}${String(s.studentNum).padStart(2,'0')}` : '');
+              const grade = s.grade || (code ? code.charAt(0) : '');
+              const classNum = s.classNum !== undefined && s.classNum !== null ? s.classNum : (code && code.length >= 3 ? parseInt(code.substring(1, 3), 10) : '');
               subjectMap.get(s.subject).list.push({
                 stId: code,
-                stName: s.name
+                stName: s.name,
+                grade: grade,
+                classNum: classNum
               });
             }
           });
@@ -1043,6 +1117,17 @@ const ExcelService = {
             const entry = subjectMap.get(sub);
             const memo = entry.memo || '';
             const stList = entry.list;
+
+            // ★ classFilter가 있는 경우: 해당 학급 학생이 1명이라도 듣는 과목만 선별
+            if (classFilter) {
+              const hasTargetClass = stList.some(st => {
+                const matchG = String(st.grade) === String(classFilter.grade);
+                const matchC = Number(st.classNum) === Number(classFilter.classNum);
+                return matchG && matchC;
+              });
+              if (!hasTargetClass) return; // 이 학급 학생이 안 듣는 과목은 미표기
+            }
+
             stList.sort((a, b) => {
               if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });
               return a.stName.localeCompare(b.stName, 'ko');
@@ -1070,8 +1155,11 @@ const ExcelService = {
       masterStudents.forEach(m => {
         if (!m) return;
         const code = m.studentCode || (m.grade && m.classNum && m.studentNum ? `${m.grade}${String(m.classNum).padStart(2,'0')}${String(m.studentNum).padStart(2,'0')}` : '');
-        if (m.id) masterIdMap.set(m.id, { id: m.id, code, name: m.name });
-        if (m.name) masterNameMap.set(m.name, { id: m.id, code, name: m.name });
+        const grade = m.grade || (code ? code.charAt(0) : '');
+        const classNum = m.classNum !== undefined && m.classNum !== null ? m.classNum : (code && code.length >= 3 ? parseInt(code.substring(1, 3), 10) : '');
+        const info = { id: m.id, code, name: m.name, grade, classNum };
+        if (m.id) masterIdMap.set(m.id, info);
+        if (m.name) masterNameMap.set(m.name, info);
       });
 
       const matchedSubjects = [];
@@ -1102,11 +1190,21 @@ const ExcelService = {
         enrolled.forEach(stRef => {
           const m = masterIdMap.get(stRef) || masterNameMap.get(stRef);
           if (m) {
-            studentItems.push({ stId: m.code || '', stName: m.name });
+            studentItems.push({ stId: m.code || '', stName: m.name, grade: m.grade, classNum: m.classNum });
           } else {
-            studentItems.push({ stId: '', stName: String(stRef) });
+            studentItems.push({ stId: '', stName: String(stRef), grade: '', classNum: '' });
           }
         });
+
+        // ★ classFilter가 있는 경우: 해당 학급 학생이 1명이라도 듣는 과목만 선별
+        if (classFilter) {
+          const hasTargetClass = studentItems.some(st => {
+            const matchG = String(st.grade) === String(classFilter.grade);
+            const matchC = Number(st.classNum) === Number(classFilter.classNum);
+            return matchG && matchC;
+          });
+          if (!hasTargetClass) return; // 이 학급 학생이 안 듣는 과목은 미표기
+        }
 
         studentItems.sort((a, b) => {
           if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });

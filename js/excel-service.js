@@ -1121,6 +1121,9 @@ const ExcelService = {
     };
 
     // 교시별 행 생성
+    const periodStartRows = new Set();
+    const periodEndRows = new Set();
+
     (periods || []).forEach(period => {
       const daySlotsData = targetDays.map(day => {
         const items1 = getSlotItems(sem1Data, day.id, period);
@@ -1482,6 +1485,9 @@ const ExcelService = {
         });
       });
 
+      periodStartRows.add(blockStartRow);
+      periodEndRows.add(blockEndRow);
+
       currentRow = blockEndRow + 1;
     });
 
@@ -1531,26 +1537,38 @@ const ExcelService = {
           }
         }
 
-        // 2) 상/하 경계 설정
+        // 2) 상/하 경계 설정 (교시 간 검은색 테두리 적용)
+        const borderBlack = { argb: 'FF000000' };
+
         if (r === 3) {
           // 요일 헤더 맨 위
           topStyle = 'medium';
           topColor = borderDark;
         }
         if (r === 5) {
-          // 헤더와 데이터 경계선 (헤더 아래쪽 굵은 선)
+          // 헤더와 데이터 경계선 (1교시 상단)
           bottomStyle = 'medium';
-          bottomColor = borderDark;
+          bottomColor = borderBlack;
         }
         if (r === 6) {
-          // 데이터 첫 행 상단 (헤더와의 경계 맞춤)
+          // 데이터 첫 행 상단 (헤더와의 경계)
           topStyle = 'medium';
-          topColor = borderDark;
+          topColor = borderBlack;
+        }
+        if (periodEndRows.has(r)) {
+          // ★ 교시 간 하단 경계선: 검은색 테두리
+          bottomStyle = 'medium';
+          bottomColor = borderBlack;
+        }
+        if (periodStartRows.has(r) && r > 6) {
+          // ★ 교시 간 상단 경계선: 검은색 테두리
+          topStyle = 'medium';
+          topColor = borderBlack;
         }
         if (r === endDataRow) {
           // 표 맨 아래 외곽선
           bottomStyle = 'medium';
-          bottomColor = borderDark;
+          bottomColor = borderBlack;
         }
 
         cell.border = {

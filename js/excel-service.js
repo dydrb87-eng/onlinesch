@@ -873,7 +873,7 @@ const ExcelService = {
       const noticeCell = sheet.getCell(2, 1);
       noticeCell.value = `📢 [안내 사항]\n${trimmedNotice}`;
       noticeCell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF1E293B' } };
-      noticeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true, indent: 1 };
+      noticeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
       
       const lines = trimmedNotice.split('\n').length;
       sheet.getRow(2).height = Math.max(34, (lines + 1) * 20 + 8);
@@ -1182,7 +1182,7 @@ const ExcelService = {
           }
 
           // (학번) 학생명: 왼쪽 정렬 + 들여쓰기 1
-          cSt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          cSt.alignment = { vertical: 'middle', horizontal: 'left' };
 
           this.applyBorder(cSub);
           this.applyBorder(cSt);
@@ -1244,7 +1244,7 @@ const ExcelService = {
             cell.value = '';
           }
 
-          cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
 
           // 파스텔톤 배경색 채우기
           if (color) {
@@ -1292,7 +1292,7 @@ const ExcelService = {
           }
 
           // (학번) 학생명: 왼쪽 정렬 + 들여쓰기 1
-          cSt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          cSt.alignment = { vertical: 'middle', horizontal: 'left' };
 
           this.applyBorder(cSub);
           this.applyBorder(cSt);
@@ -1354,7 +1354,7 @@ const ExcelService = {
             cell.value = '';
           }
 
-          cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
 
           // 파스텔톤 배경색 채우기
           if (color) {

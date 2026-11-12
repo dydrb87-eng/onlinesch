@@ -754,9 +754,11 @@ const ExcelService = {
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-        // =========================================================================
+          // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
+  // - 1학기/2학기 어떤 탭에서 다운로드하든 양 학기 데이터를 100% 온전히 추출 및 표시
+  // - semData.students 및 semData.courseSchedules(배열/단일슬롯)/enrollments 다중 소스 지원
   // - 타이틀 제외 데이터 글자 크기 13pt, '(학번)' 부분은 9pt (Rich Text 적용)
   // - 과목명에 연한 파스텔톤 배경색을 채워 시각적 구별성 강화 (과목별 고유 파스텔톤)
   // - '과목명'은 세로 병합을 먼저 수행한 후 파스텔 배경 및 왼쪽 정렬/들여쓰기 1(indent: 1) 적용
@@ -944,58 +946,132 @@ const ExcelService = {
       this.applyBorder(cell);
     }
 
-    // 1학기 및 2학기 데이터 준비
-    const schedules1 = sem1Data.courseSchedules || {};
-    const enrollments1 = sem1Data.courseEnrollments || {};
-    const masterStudents1 = sem1Data.masterStudents || [];
-    const statusMap1 = sem1Data.courseStatus || {};
+    // =========================================================================
+    // ★ 특정 학기 데이터(semData)에서 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼
+    // =========================================================================
+    const getSlotItems = (semData, dayId, period) => {
+      if (!semData || typeof semData !== 'object') return [];
 
-    const schedules2 = sem2Data.courseSchedules || {};
-    const enrollments2 = sem2Data.courseEnrollments || {};
-    const masterStudents2 = sem2Data.masterStudents || [];
-    const statusMap2 = sem2Data.courseStatus || {};
-
-    // 학번 맵
-    const masterMap1 = new Map();
-    masterStudents1.forEach(s => {
-      if (s && s.name && s.studentId) masterMap1.set(s.name, s.studentId);
-    });
-    const masterMap2 = new Map();
-    masterStudents2.forEach(s => {
-      if (s && s.name && s.studentId) masterMap2.set(s.name, s.studentId);
-    });
-
-    // 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼 (stId, stName 분리 보존)
-    const getSlotItems = (schedules, enrollments, masterMap, statusMap, dayId, period) => {
-      const items = [];
       const periodIdStr = String(period.id);
+      const periodNum = period.period;
+      const statusMap = semData.courseStatus || {};
 
-      Object.entries(schedules).forEach(([subject, slot]) => {
-        if (!slot) return;
-        if (slot.day !== dayId) return;
-        if (String(slot.periodId) !== periodIdStr) return;
-        if (statusMap[subject] === '폐강') return;
-
-        const enrolled = enrollments[subject] || [];
-        const sortedStudents = [...enrolled].sort((a, b) => {
-          const idA = masterMap.get(a) || '';
-          const idB = masterMap.get(b) || '';
-          if (idA && idB) return idA.localeCompare(idB);
-          return a.localeCompare(b, 'ko');
+      // 1) 우선 semData.students 배열(시간표에 매핑된 최종 평탄화 데이터)이 있는 경우 최우선 활용
+      if (Array.isArray(semData.students) && semData.students.length > 0) {
+        const matching = semData.students.filter(s => {
+          if (!s || !s.subject) return false;
+          if (statusMap[s.subject] === '폐강') return false;
+          if (s.day !== dayId) return false;
+          const matchPeriodId = s.periodId && String(s.periodId) === periodIdStr;
+          const matchPeriodNum = s.period !== undefined && s.period !== null && s.period === periodNum;
+          return matchPeriodId || matchPeriodNum;
         });
 
-        if (sortedStudents.length === 0) {
+        if (matching.length > 0) {
+          // 과목별로 학생 그룹화
+          const subjectMap = new Map();
+          matching.forEach(s => {
+            if (!subjectMap.has(s.subject)) {
+              subjectMap.set(s.subject, []);
+            }
+            if (s.name) {
+              const code = s.studentCode || (s.grade && s.classNum && s.studentNum ? `${s.grade}${String(s.classNum).padStart(2,'0')}${String(s.studentNum).padStart(2,'0')}` : '');
+              subjectMap.get(s.subject).push({
+                stId: code,
+                stName: s.name
+              });
+            }
+          });
+
+          const items = [];
+          const sortedSubjects = Array.from(subjectMap.keys()).sort((a, b) => a.localeCompare(b, 'ko'));
+          sortedSubjects.forEach(sub => {
+            const stList = subjectMap.get(sub);
+            // 학번/이름순 정렬
+            stList.sort((a, b) => {
+              if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });
+              return a.stName.localeCompare(b.stName, 'ko');
+            });
+
+            if (stList.length === 0) {
+              items.push({ subject: sub, stId: '', stName: '-' });
+            } else {
+              stList.forEach(st => {
+                items.push({ subject: sub, stId: st.stId, stName: st.stName });
+              });
+            }
+          });
+          return items;
+        }
+      }
+
+      // 2) semData.courseSchedules (배열 및 객체 모두 수용) 및 courseEnrollments 에서 직접 추출
+      const schedules = semData.courseSchedules || {};
+      const enrollments = semData.courseEnrollments || {};
+      const masterStudents = semData.masterStudents || [];
+
+      // masterStudents 맵 구축 (id 기준 및 name 기준 이중 맵)
+      const masterIdMap = new Map();
+      const masterNameMap = new Map();
+      masterStudents.forEach(m => {
+        if (!m) return;
+        const code = m.studentCode || (m.grade && m.classNum && m.studentNum ? `${m.grade}${String(m.classNum).padStart(2,'0')}${String(m.studentNum).padStart(2,'0')}` : '');
+        if (m.id) masterIdMap.set(m.id, { id: m.id, code, name: m.name });
+        if (m.name) masterNameMap.set(m.name, { id: m.id, code, name: m.name });
+      });
+
+      const matchedSubjects = [];
+
+      Object.entries(schedules).forEach(([subject, scheduleSlots]) => {
+        if (!scheduleSlots) return;
+        if (statusMap[subject] === '폐강') return;
+
+        // scheduleSlots 가 배열인 경우([ {day, periodId}, ... ])와 단일 객체인 경우 모두 지원
+        const slotsArray = Array.isArray(scheduleSlots) ? scheduleSlots : [scheduleSlots];
+        const isMatched = slotsArray.some(slot => {
+          if (!slot || slot.day !== dayId) return false;
+          const matchId = slot.periodId && String(slot.periodId) === periodIdStr;
+          const matchNum = slot.period !== undefined && slot.period !== null && slot.period === periodNum;
+          return matchId || matchNum;
+        });
+
+        if (isMatched) {
+          matchedSubjects.push(subject);
+        }
+      });
+
+      matchedSubjects.sort((a, b) => a.localeCompare(b, 'ko'));
+
+      const items = [];
+      matchedSubjects.forEach(subject => {
+        const enrolled = enrollments[subject] || [];
+        const studentItems = [];
+
+        enrolled.forEach(stRef => {
+          // stRef 는 학생 id 일 수도 있고 name 일 수도 있음
+          const m = masterIdMap.get(stRef) || masterNameMap.get(stRef);
+          if (m) {
+            studentItems.push({ stId: m.code || '', stName: m.name });
+          } else {
+            studentItems.push({ stId: '', stName: String(stRef) });
+          }
+        });
+
+        // 정렬
+        studentItems.sort((a, b) => {
+          if (a.stId && b.stId) return a.stId.localeCompare(b.stId, 'ko', { numeric: true });
+          return a.stName.localeCompare(b.stName, 'ko');
+        });
+
+        if (studentItems.length === 0) {
           items.push({ subject, stId: '', stName: '-' });
         } else {
-          sortedStudents.forEach(stName => {
-            const stId = masterMap.get(stName) || '';
-            items.push({ subject, stId, stName });
+          studentItems.forEach(st => {
+            items.push({ subject, stId: st.stId, stName: st.stName });
           });
         }
       });
 
-      // 과목명 가나다순 정렬
-      items.sort((a, b) => a.subject.localeCompare(b.subject, 'ko'));
       return items;
     };
 
@@ -1003,8 +1079,8 @@ const ExcelService = {
     (periods || []).forEach(period => {
       // 월~금 각각의 1학기/2학기 데이터 추출
       const daySlotsData = targetDays.map(day => {
-        const items1 = getSlotItems(schedules1, enrollments1, masterMap1, statusMap1, day.id, period);
-        const items2 = getSlotItems(schedules2, enrollments2, masterMap2, statusMap2, day.id, period);
+        const items1 = getSlotItems(sem1Data, day.id, period);
+        const items2 = getSlotItems(sem2Data, day.id, period);
         return { day, items1, items2 };
       });
 

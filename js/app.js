@@ -1119,6 +1119,8 @@ class TimetableApp {
     document.getElementById('btn-export-timetable')?.addEventListener('click', () => {
       const activeDays = this.showWeekends ? this.days : this.days.filter(d => !d.isWeekend);
       this.saveActiveYearSemesterData();
+      this.ensureYearSemesterData(this.activeYear, '1');
+      this.ensureYearSemesterData(this.activeYear, '2');
       const currentYearData = this.yearsData[this.activeYear] || {};
       const currentNotice = (this.timetableNotices && this.timetableNotices[this.activeYear]) || '';
       ExcelService.exportTimetableExcel(this.periods, activeDays, this.students, this.subjectColorMap, this.activeYear, this.activeSemester, '상지대관령고', this.courseEnrollments, this.masterStudents, this.courseStatus, currentYearData, currentNotice);

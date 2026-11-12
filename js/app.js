@@ -5531,18 +5531,6 @@ class TimetableApp {
           </div>
 
           <div class="flex items-center gap-1 pointer-events-auto">
-            <!-- 하이라이트 토글 버튼 -->
-            <button type="button" 
-                    onclick="event.stopPropagation(); window.app.toggleHighlightSubject(decodeURIComponent('${safeSub}'))" 
-                    class="px-1.5 py-0.5 text-[10px] font-black rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1 shrink-0 ${
-                      isSelected 
-                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-400 ring-offset-1' 
-                        : 'bg-white/95 text-indigo-700 hover:bg-indigo-50 border border-indigo-200'
-                    }"
-                    title="오른쪽 시간표에서 '${sub}' 과목 하이라이트 토글">
-              <i data-lucide="sparkles" class="w-3 h-3 ${isSelected ? 'text-amber-300' : 'text-indigo-600'}"></i>
-              <span>${isSelected ? '강조중' : '강조'}</span>
-            </button>
 
             <!-- 상태 및 액션 버튼 그룹 -->
             ${actionButtonsHtml}

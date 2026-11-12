@@ -580,7 +580,7 @@ const ExcelService = {
 
     // 5-0. [신규 탭] 1,2학기 통합시간표 시트 생성 (엑셀의 가장 첫 번째 탭 위치)
     if (yearData && typeof yearData === 'object') {
-      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true }] });
+      const unifiedSheet = workbook.addWorksheet('1,2학기 통합시간표', { views: [{ showGridLines: true, zoomScale: 70 }] });
       this.buildUnifiedSemesterTimetableSheet(unifiedSheet, periods, academicYear, schoolName, yearData, noticeText, subjectColorMap);
     }
 
@@ -754,12 +754,14 @@ const ExcelService = {
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-                // =========================================================================
+                  // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
   // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
+  // - [화면 배율] 파일을 열었을 때 전체가 한눈에 보이도록 70% 축소 상태(zoomScale: 70)로 저장
+  // - [안내사항] '안내사항: '(빨간색) 및 사용자 입력 내용 모두 글자 크기 32pt 적용
+  // - [행 높이] 1명 신청 행(단일 행)은 과목명-줄바꿈-개설상태가 모두 잘 보이도록 최소 44pt 적용
   // - [탭 위치] 엑셀 파일 내 가장 첫 번째 탭에 위치
   // - [타이틀] '2027학년도 강원온라인학교 1,2학기 통합시간표', 글자크기 26pt
-  // - [안내사항] '안내사항: ' 빨간색 32pt, 나머지 본문 15pt, 가로로 길게 입력
   // - [교시 표기] 시간 '~' 다음 줄바꿈: 5교시\n(13:40~\n14:30)
   // - [과목명/상태] 줄바꿈 및 가운데 정렬: 과목명\n(개설상태) - 상태 글자크기 10pt
   // - [셀 서식] 월~금 열에 있는 모든 데이터: '셀에 맞춤(shrinkToFit: true)' 설정
@@ -769,6 +771,17 @@ const ExcelService = {
   buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '', subjectColorMap = {}) {
     const sem1Data = (yearData && yearData['1']) || {};
     const sem2Data = (yearData && yearData['2']) || {};
+
+    // -------------------------------------------------------------------------
+    // ★ 화면 보기 설정: 파일을 열었을 때 전체가 한눈에 보이도록 70% 축소 배율 적용
+    // -------------------------------------------------------------------------
+    sheet.views = [
+      {
+        state: 'normal',
+        showGridLines: true,
+        zoomScale: 70 // 전체 21개 열과 시간표 전체가 한눈에 들어오는 최적 배율
+      }
+    ];
 
     // -------------------------------------------------------------------------
     // ★ 페이지 인쇄 설정: B4 가로 1장에 꽉 차게 인쇄 배율 설정 (단면 인쇄)
@@ -867,7 +880,7 @@ const ExcelService = {
     sheet.getRow(1).height = 54;
 
     let rowDayIdx = 2;
-    // 2행: 안내사항 -> '안내사항: ' 글자크기 32pt(빨간색), 나머지 15pt 가로로 길게 입력
+    // 2행: 안내사항 -> '안내사항: '(빨간색) 및 사용자가 입력한 내용 모두 동일하게 32pt 적용!
     const trimmedNotice = (noticeText || '').trim();
     if (trimmedNotice) {
       sheet.mergeCells(2, 1, 2, 21);
@@ -882,12 +895,12 @@ const ExcelService = {
           },
           {
             text: inlineNotice,
-            font: { name: '맑은 고딕', size: 15, bold: true, color: { argb: 'FF1E293B' } } // 본문 15pt
+            font: { name: '맑은 고딕', size: 32, bold: true, color: { argb: 'FF1E293B' } } // 입력 내용도 동일하게 32pt!
           }
         ]
       };
       noticeCell.alignment = { vertical: 'middle', horizontal: 'left', shrinkToFit: true };
-      sheet.getRow(2).height = 52; // 32pt에 맞춘 시원한 행 높이
+      sheet.getRow(2).height = 68; // 32pt 폰트에 맞춘 넉넉하고 시원한 행 높이
 
       for (let c = 1; c <= 21; c++) {
         const cell = sheet.getCell(2, c);
@@ -1124,9 +1137,11 @@ const ExcelService = {
       const blockStartRow = currentRow;
       const blockEndRow = blockStartRow + maxBlockRows - 1;
 
-      // 행 높이 설정 (글자 크기 13pt에 맞춰 넉넉하게 29로 설정)
+      // ★ 사용자 요구사항: 1명 신청 행(maxBlockRows === 1)의 경우 과목명-줄바꿈-개설상태가 모두 잘 보이도록 최소 44pt 설정!
+      // 2명 이상인 과목은 현재처럼 각 행당 29pt 적용 (병합되어 58pt 이상 확보됨)
+      const dynamicRowHeight = maxBlockRows === 1 ? 44 : 29;
       for (let r = blockStartRow; r <= blockEndRow; r++) {
-        sheet.getRow(r).height = 29;
+        sheet.getRow(r).height = dynamicRowHeight;
       }
 
       // 교시 (A열) 세로 병합 및 시간 표기 ('~' 다음 줄바꿈)
@@ -1134,7 +1149,6 @@ const ExcelService = {
         sheet.mergeCells(blockStartRow, 1, blockEndRow, 1);
       }
       const periodCell = sheet.getCell(blockStartRow, 1);
-      // ★ 사용자 요구사항: '~' 다음 줄바꿈하기
       periodCell.value = `${period.name}\n(${period.startTime}~\n${period.endTime})`;
       periodCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF1E293B' } };
       periodCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -1250,7 +1264,6 @@ const ExcelService = {
             if (stText === '조정') stColor = 'FFD97706'; // 조정: 진한 주황
             else if (stText === '폐강') stColor = 'FFDC2626'; // 폐강: 진한 빨강
 
-            // ★ 사용자 요구사항: '과목명' '개설상태' 줄바꿈하기. 과목명 -줄바꿈-(개설상태). '개설상태'는 가운데 정렬
             cell.value = {
               richText: [
                 {
@@ -1408,7 +1421,6 @@ const ExcelService = {
             if (stText === '조정') stColor = 'FFD97706'; // 조정: 진한 주황
             else if (stText === '폐강') stColor = 'FFDC2626'; // 폐강: 진한 빨강
 
-            // ★ 사용자 요구사항: '과목명' '개설상태' 줄바꿈하기. 과목명 -줄바꿈-(개설상태). '개설상태'는 가운데 정렬
             cell.value = {
               richText: [
                 {

@@ -754,11 +754,12 @@ const ExcelService = {
   },
 
   // 개별 시간표 시트 디자인 생성 헬퍼
-    // =========================================================================
+      // =========================================================================
   // 5-4. [신규] 1,2학기 통합시간표 시트 디자인 생성 헬퍼
-  // 월화수목금 각 4개 열 (1학기 2개열: 과목명/학번학생명, 2학기 2개열: 과목명/학번학생명)
-  // - 안내 사항 기입 기능 지원 (타이틀 아래 돋보이는 디자인 박스)
+  // 월화수목금 각 4개 열 (1학기 2개열: 과목명/(학번) 학생명, 2학기 2개열: 과목명/(학번) 학생명)
+  // - 타이틀 제외 데이터 글자 크기 13pt, '(학번)' 부분은 9pt (Rich Text 적용)
   // - '과목명'은 세로 병합을 먼저 수행한 후 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
+  // - 안내 사항 기입 기능 지원 (타이틀 아래 돋보이는 디자인 박스)
   // =========================================================================
   buildUnifiedSemesterTimetableSheet(sheet, periods, academicYear, schoolName, yearData, noticeText = '') {
     const sem1Data = (yearData && yearData['1']) || {};
@@ -772,15 +773,15 @@ const ExcelService = {
       { id: 'fri', name: '금요일' }
     ];
 
-    // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열)
+    // 열 너비 설정 (A열: 교시, 각 요일당 4개 열씩 총 21개 열, 13pt 글자에 맞게 넉넉히 설정)
     const columnsConfig = [
-      { width: 14 } // A: 교시
+      { width: 16 } // A: 교시
     ];
     targetDays.forEach(() => {
-      columnsConfig.push({ width: 19 }); // 1학기 과목명
-      columnsConfig.push({ width: 16 }); // 1학기 학번학생명
-      columnsConfig.push({ width: 19 }); // 2학기 과목명
-      columnsConfig.push({ width: 16 }); // 2학기 학번학생명
+      columnsConfig.push({ width: 22 }); // 1학기 과목명
+      columnsConfig.push({ width: 20 }); // 1학기 (학번) 학생명
+      columnsConfig.push({ width: 22 }); // 2학기 과목명
+      columnsConfig.push({ width: 20 }); // 2학기 (학번) 학생명
     });
     sheet.columns = columnsConfig;
 
@@ -799,11 +800,11 @@ const ExcelService = {
       sheet.mergeCells(2, 1, 2, 21);
       const noticeCell = sheet.getCell(2, 1);
       noticeCell.value = `📢 [안내 사항]\n${trimmedNotice}`;
-      noticeCell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      noticeCell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF1E293B' } };
       noticeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true, indent: 1 };
       
       const lines = trimmedNotice.split('\n').length;
-      sheet.getRow(2).height = Math.max(34, (lines + 1) * 19 + 8);
+      sheet.getRow(2).height = Math.max(34, (lines + 1) * 20 + 8);
 
       for (let c = 1; c <= 21; c++) {
         const cell = sheet.getCell(2, c);
@@ -828,14 +829,14 @@ const ExcelService = {
 
     // 요일 대분류 헤더 (A열 교시, 각 요일 4개열씩 병합)
     const rowDay = sheet.getRow(rowDayIdx);
-    rowDay.height = 28;
+    rowDay.height = 30;
     targetDays.forEach((day, idx) => {
       const startCol = 2 + idx * 4;
       const endCol = startCol + 3;
       sheet.mergeCells(rowDayIdx, startCol, rowDayIdx, endCol);
       const dayCell = sheet.getCell(rowDayIdx, startCol);
       dayCell.value = day.name;
-      dayCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+      dayCell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
       dayCell.alignment = { vertical: 'middle', horizontal: 'center' };
       for (let c = startCol; c <= endCol; c++) {
         const cell = sheet.getCell(rowDayIdx, c);
@@ -846,7 +847,7 @@ const ExcelService = {
 
     // 학기 중분류 헤더 (1학기 2개열, 2학기 2개열 병합)
     const rowSem = sheet.getRow(rowSemIdx);
-    rowSem.height = 24;
+    rowSem.height = 26;
     targetDays.forEach((day, idx) => {
       const colSem1 = 2 + idx * 4;
       const colSem2 = colSem1 + 2;
@@ -855,7 +856,7 @@ const ExcelService = {
       sheet.mergeCells(rowSemIdx, colSem1, rowSemIdx, colSem1 + 1);
       const sem1Cell = sheet.getCell(rowSemIdx, colSem1);
       sem1Cell.value = '1학기';
-      sem1Cell.font = { name: '맑은 고딕', size: 10.5, bold: true, color: { argb: 'FF1D4ED8' } };
+      sem1Cell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF1D4ED8' } };
       sem1Cell.alignment = { vertical: 'middle', horizontal: 'center' };
       for (let c = colSem1; c <= colSem1 + 1; c++) {
         const cell = sheet.getCell(rowSemIdx, c);
@@ -867,7 +868,7 @@ const ExcelService = {
       sheet.mergeCells(rowSemIdx, colSem2, rowSemIdx, colSem2 + 1);
       const sem2Cell = sheet.getCell(rowSemIdx, colSem2);
       sem2Cell.value = '2학기';
-      sem2Cell.font = { name: '맑은 고딕', size: 10.5, bold: true, color: { argb: 'FF4338CA' } };
+      sem2Cell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FF4338CA' } };
       sem2Cell.alignment = { vertical: 'middle', horizontal: 'center' };
       for (let c = colSem2; c <= colSem2 + 1; c++) {
         const cell = sheet.getCell(rowSemIdx, c);
@@ -876,16 +877,16 @@ const ExcelService = {
       }
     });
 
-    // 소분류 헤더 (과목명, 학번학생명)
+    // 소분류 헤더 (과목명, (학번) 학생명)
     const rowSubj = sheet.getRow(rowSubjIdx);
-    rowSubj.height = 24;
+    rowSubj.height = 26;
     targetDays.forEach((day, idx) => {
       const colBase = 2 + idx * 4;
-      const headers = ['과목명', '학번·성명', '과목명', '학번·성명'];
+      const headers = ['과목명', '(학번) 학생명', '과목명', '(학번) 학생명'];
       headers.forEach((h, hIdx) => {
         const cell = sheet.getCell(rowSubjIdx, colBase + hIdx);
         cell.value = h;
-        cell.font = { name: '맑은 고딕', size: 10, bold: true, color: { argb: 'FF334155' } };
+        cell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FF334155' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
         this.applyBorder(cell);
@@ -896,7 +897,7 @@ const ExcelService = {
     sheet.mergeCells(rowDayIdx, 1, rowSubjIdx, 1);
     const colPeriodCell = sheet.getCell(rowDayIdx, 1);
     colPeriodCell.value = '교시';
-    colPeriodCell.font = { name: '맑은 고딕', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+    colPeriodCell.font = { name: '맑은 고딕', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
     colPeriodCell.alignment = { vertical: 'middle', horizontal: 'center' };
     for (let r = rowDayIdx; r <= rowSubjIdx; r++) {
       const cell = sheet.getCell(r, 1);
@@ -925,7 +926,7 @@ const ExcelService = {
       if (s && s.name && s.studentId) masterMap2.set(s.name, s.studentId);
     });
 
-    // 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼
+    // 특정 요일/교시 슬롯의 과목 및 학생 목록 추출 헬퍼 (stId, stName 분리 보존)
     const getSlotItems = (schedules, enrollments, masterMap, statusMap, dayId, period) => {
       const items = [];
       const periodIdStr = String(period.id);
@@ -945,12 +946,11 @@ const ExcelService = {
         });
 
         if (sortedStudents.length === 0) {
-          items.push({ subject, studentText: '-' });
+          items.push({ subject, stId: '', stName: '-' });
         } else {
           sortedStudents.forEach(stName => {
-            const stId = masterMap.get(stName);
-            const studentText = stId ? `${stId} ${stName}` : stName;
-            items.push({ subject, studentText });
+            const stId = masterMap.get(stName) || '';
+            items.push({ subject, stId, stName });
           });
         }
       });
@@ -979,9 +979,9 @@ const ExcelService = {
       const blockStartRow = currentRow;
       const blockEndRow = blockStartRow + maxBlockRows - 1;
 
-      // 행 높이 설정
+      // 행 높이 설정 (글자 크기 13pt에 맞춰 넉넉하게 29로 설정)
       for (let r = blockStartRow; r <= blockEndRow; r++) {
-        sheet.getRow(r).height = 23;
+        sheet.getRow(r).height = 29;
       }
 
       // 교시 (A열) 세로 병합
@@ -990,7 +990,7 @@ const ExcelService = {
       }
       const periodCell = sheet.getCell(blockStartRow, 1);
       periodCell.value = `${period.name}\n(${period.startTime}~${period.endTime})`;
-      periodCell.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+      periodCell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FF1E293B' } };
       periodCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
 
       for (let r = blockStartRow; r <= blockEndRow; r++) {
@@ -1000,7 +1000,9 @@ const ExcelService = {
       }
 
       // 각 요일별 열 채우기:
-      // ★ 사용자 요구사항: "과목명은 병합을 먼저 한 후 왼쪽 정렬, 들여쓰기 적용의 순서로 해줘"
+      // ★ 사용자 요구사항: 
+      // 1) "타이틀 제외, 데이터의 글자 크기는 13으로. '(학번)'에 해당하는 값은 9로."
+      // 2) "'과목명'은 병합을 먼저 한 후 왼쪽 정렬, 들여쓰기 적용의 순서로 해줘"
       daySlotsData.forEach((d, dayIdx) => {
         const colSub1 = 2 + dayIdx * 4;
         const colSt1 = colSub1 + 1;
@@ -1008,7 +1010,7 @@ const ExcelService = {
         const colSt2 = colSub2 + 1;
 
         // ==========================================
-        // 1학기: 1) 데이터 기본 입력 및 학번·성명 서식 적용
+        // 1학기: 1) 데이터 기본 입력 및 (학번) 학생명 서식 적용
         // ==========================================
         for (let i = 0; i < maxBlockRows; i++) {
           const r = blockStartRow + i;
@@ -1017,10 +1019,26 @@ const ExcelService = {
           const cSt = sheet.getCell(r, colSt1);
 
           cSub.value = item ? item.subject : '';
-          cSt.value = item ? item.studentText : '';
 
-          // 학번·성명: 왼쪽 정렬 + 들여쓰기 1
-          cSt.font = { name: '맑은 고딕', size: 9.5, color: { argb: 'FF334155' } };
+          if (item) {
+            if (item.stId) {
+              // 학번은 9pt, 학생명은 13pt
+              cSt.value = {
+                richText: [
+                  { text: `(${item.stId}) `, font: { name: '맑은 고딕', size: 9, color: { argb: 'FF475569' } } },
+                  { text: item.stName, font: { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } } }
+                ]
+              };
+            } else {
+              cSt.value = item.stName;
+              cSt.font = { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } };
+            }
+          } else {
+            cSt.value = '';
+            cSt.font = { name: '맑은 고딕', size: 13 };
+          }
+
+          // (학번) 학생명: 왼쪽 정렬 + 들여쓰기 1
           cSt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
           this.applyBorder(cSub);
@@ -1044,17 +1062,17 @@ const ExcelService = {
           }
         }
 
-        // 1학기: 3) 병합 완료 후 -> 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
+        // 1학기: 3) 병합 완료 후 -> 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
         subSpans1.forEach(span => {
           const topRow = blockStartRow + span.start;
           const cell = sheet.getCell(topRow, colSub1);
-          cell.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+          cell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FF1E293B' } };
           cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
           this.applyBorder(cell);
         });
 
         // ==========================================
-        // 2학기: 1) 데이터 기본 입력 및 학번·성명 서식 적용
+        // 2학기: 1) 데이터 기본 입력 및 (학번) 학생명 서식 적용
         // ==========================================
         for (let i = 0; i < maxBlockRows; i++) {
           const r = blockStartRow + i;
@@ -1063,10 +1081,26 @@ const ExcelService = {
           const cSt = sheet.getCell(r, colSt2);
 
           cSub.value = item ? item.subject : '';
-          cSt.value = item ? item.studentText : '';
 
-          // 학번·성명: 왼쪽 정렬 + 들여쓰기 1
-          cSt.font = { name: '맑은 고딕', size: 9.5, color: { argb: 'FF334155' } };
+          if (item) {
+            if (item.stId) {
+              // 학번은 9pt, 학생명은 13pt
+              cSt.value = {
+                richText: [
+                  { text: `(${item.stId}) `, font: { name: '맑은 고딕', size: 9, color: { argb: 'FF475569' } } },
+                  { text: item.stName, font: { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } } }
+                ]
+              };
+            } else {
+              cSt.value = item.stName;
+              cSt.font = { name: '맑은 고딕', size: 13, color: { argb: 'FF1E293B' } };
+            }
+          } else {
+            cSt.value = '';
+            cSt.font = { name: '맑은 고딕', size: 13 };
+          }
+
+          // (학번) 학생명: 왼쪽 정렬 + 들여쓰기 1
           cSt.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
           this.applyBorder(cSub);
@@ -1090,11 +1124,11 @@ const ExcelService = {
           }
         }
 
-        // 2학기: 3) 병합 완료 후 -> 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
+        // 2학기: 3) 병합 완료 후 -> 글자 크기 13, 왼쪽 정렬 및 들여쓰기 1(indent: 1) 적용
         subSpans2.forEach(span => {
           const topRow = blockStartRow + span.start;
           const cell = sheet.getCell(topRow, colSub2);
-          cell.font = { name: '맑은 고딕', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+          cell.font = { name: '맑은 고딕', size: 13, bold: true, color: { argb: 'FF1E293B' } };
           cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
           this.applyBorder(cell);
         });

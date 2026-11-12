@@ -775,6 +775,7 @@ const ExcelService = {
     sheet.pageSetup = {
       orientation: 'landscape',  // 용지 방향: 가로
       paperSize: 12,            // 크기: B4 (JIS)
+      duplex: 'simplex',        // 단면 인쇄
       margins: {                // 여백: 좁게 (Narrow)
         left: 0.25,
         right: 0.25,
@@ -786,7 +787,7 @@ const ExcelService = {
       printTitlesRow: '1:5',    // 인쇄제목 - 반복할 행 : 1~5행
       fitToPage: true,          // 페이지 맞춤
       fitToWidth: 1,            // 가로 1페이지 폭에 맞춤
-      fitToHeight: 0            // 세로는 내용에 따라 자동 분할
+      fitToHeight: 2            // 세로 총 2페이지로 분할 맞춤
     };
 
     const targetDays = [
@@ -1124,6 +1125,16 @@ const ExcelService = {
 
       const blockStartRow = currentRow;
       const blockEndRow = blockStartRow + maxBlockRows - 1;
+
+      // ★ 인쇄 영역 분할: 7교시 시작 지점에서 페이지 나누기 (1페이지: ~6교시, 2페이지: 7~8교시)
+      const isPeriod7 = (period.period === 7) || (period.name && period.name.includes('7교시'));
+      if (isPeriod7) {
+        try {
+          sheet.getRow(blockStartRow).addPageBreak();
+        } catch (e) {}
+        if (!sheet.rowBreaks) sheet.rowBreaks = [];
+        sheet.rowBreaks.push(blockStartRow - 1);
+      }
 
       // 행 높이 설정 (글자 크기 13pt에 맞춰 넉넉하게 29로 설정)
       for (let r = blockStartRow; r <= blockEndRow; r++) {
